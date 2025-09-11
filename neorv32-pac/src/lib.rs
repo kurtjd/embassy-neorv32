@@ -309,7 +309,7 @@ impl Peripherals {
     #[doc = r" Each of the returned peripherals must be used at most once."]
     #[inline]
     pub unsafe fn steal() -> Self {
-        DEVICE_PERIPHERALS = true;
+        unsafe { DEVICE_PERIPHERALS = true };
         Peripherals {
             cfs: unsafe { Cfs::steal() },
             sdi: unsafe { Sdi::steal() },
