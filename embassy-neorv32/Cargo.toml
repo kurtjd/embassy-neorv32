@@ -1,0 +1,9 @@
+[package]
+name = "embassy-neorv32"
+version = "0.1.0"
+edition = "2024"
+authors = ["Kurtis Dinelle <kurtis.dinelle@gmail.com>"]
+license = "MIT"
+repository = "https://github.com/kurtjd/embassy-neorv32"
+
+[dependencies]

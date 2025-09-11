@@ -1,0 +1,17 @@
+{
+    "[markdown]": {
+        "editor.formatOnSave": false
+    },
+    "[toml]": {
+        "editor.formatOnSave": true
+    },
+    "[rust]": {
+        "editor.formatOnSave": true
+    },
+    "rust-analyzer.check.allTargets": false,
+    "rust-analyzer.cargo.features": [],
+    "rust-analyzer.linkedProjects": [
+        "neorv32-pac/Cargo.toml",
+        "embassy-neorv32/Cargo.toml",
+    ]
+}
