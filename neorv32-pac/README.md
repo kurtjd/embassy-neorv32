@@ -7,3 +7,7 @@ rm -rf src
 form -i lib.rs -o src
 cargo fmt
 ```
+
+## TODO
+- Figure out warning about legacy interrupt rendering
+- Add target settings for more detail?
