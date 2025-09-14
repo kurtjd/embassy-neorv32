@@ -1,5 +1,5 @@
 # embassy-neorv32
-An Embassy HAL for the RISCV-based [NEORV32](https://github.com/ghdl/ghdl) SoC/microcontroller
+An Embassy HAL for the RISCV-based [NEORV32](https://github.com/stnolting/neorv32) SoC/microcontroller
 
 ## Overview
 Just a very basic UART and time-driver for now as a PoC
