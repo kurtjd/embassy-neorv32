@@ -1,14 +1,15 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+#![no_std]
+mod time_driver;
+pub mod uart;
+use neorv32_pac::Peripherals;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+pub fn init() -> Peripherals {
+    let p = Peripherals::take().expect("Perhipherals must not already be taken");
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
+    // SAFETY: This can only be called once and before any CS
+    unsafe {
+        riscv::interrupt::enable();
     }
+
+    p
 }

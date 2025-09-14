@@ -11,3 +11,5 @@ cargo fmt
 ## TODO
 - Figure out warning about legacy interrupt rendering
 - Add target settings for more detail?
+- Split UART DATA reg into fields
+- Unnecessary unsafe for some regs?

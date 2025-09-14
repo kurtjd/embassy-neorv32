@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = ["neorv32-pac", "embassy-neorv32"]
+exclude = ["embassy-neorv32/examples"]
 
 [workspace.package]
 version = "0.1.0"

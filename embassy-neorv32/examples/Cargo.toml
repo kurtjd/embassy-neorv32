@@ -1,0 +1,17 @@
+[workspace]
+
+[package]
+name = "neorv32-examples"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+embassy-executor = { version = "0.9.1", features = [
+    "arch-riscv32",
+    "executor-thread",
+] }
+embassy-neorv32 = { path = "../" }
+embassy-time = "0.5.0"
+embassy-sync = "0.7.2"
+riscv = "0.15.0"
+riscv-rt = "0.16.0"
