@@ -10,14 +10,14 @@ embassy_time_driver::time_driver_impl!(static DRIVER: MtimerDriver = MtimerDrive
     queue: Mutex::new(RefCell::new(Queue::new()))
 });
 
-#[riscv_rt::core_interrupt(riscv::interrupt::Interrupt::MachineTimer)]
-fn mtimer_handler() {
+#[riscv_rt::core_interrupt(neorv32_pac::interrupt::CoreInterrupt::MachineTimer)]
+fn machine_timer_handler() {
     DRIVER.on_interrupt()
 }
 
-fn clint() -> &'static neorv32_pac::clint::RegisterBlock {
+fn clint() -> neorv32_pac::Clint {
     // SAFETY: TODO
-    unsafe { &*neorv32_pac::Clint::ptr() }
+    unsafe { neorv32_pac::Clint::steal() }
 }
 
 struct MtimerDriver {
@@ -27,7 +27,7 @@ struct MtimerDriver {
 impl MtimerDriver {
     fn on_interrupt(&self) {
         // Disable the mtimer interrupt
-        riscv::interrupt::disable_interrupt(riscv::interrupt::Interrupt::MachineTimer);
+        riscv::interrupt::disable_interrupt(neorv32_pac::interrupt::CoreInterrupt::MachineTimer);
 
         critical_section::with(|cs| {
             let mut queue = self.queue.borrow(cs).borrow_mut();
@@ -46,15 +46,7 @@ impl MtimerDriver {
             return false;
         }
 
-        // SAFETY: Pac might be unnecessarily marking these unsafe
-        clint()
-            .mtimecmp0_hi()
-            .write(|w| unsafe { w.bits((ts >> 32) as u32) });
-
-        // SAFETY: Pac might be unnecessarily marking these unsafe
-        clint()
-            .mtimecmp0_low()
-            .write(|w| unsafe { w.bits(ts as u32) });
+        clint().mtimer().mtimecmp0().write(ts);
 
         // Timestamp is in the past
         let t = self.now();
@@ -63,7 +55,9 @@ impl MtimerDriver {
         } else {
             // SAFETY: TODO
             unsafe {
-                riscv::interrupt::enable_interrupt(riscv::interrupt::Interrupt::MachineTimer);
+                riscv::interrupt::enable_interrupt(
+                    neorv32_pac::interrupt::CoreInterrupt::MachineTimer,
+                );
             }
             true
         }
@@ -72,19 +66,7 @@ impl MtimerDriver {
 
 impl Driver for MtimerDriver {
     fn now(&self) -> u64 {
-        // Read the 64 bit mtime register
-        // Unfortunately neorv32 does not mirror this to `time` so can't use `riscv::register::time`
-        loop {
-            let mtime_hi = clint().mtime_hi().read().bits() as u64;
-            let mtime_lo = clint().mtime_low().read().bits() as u64;
-            let mtime_hi2 = clint().mtime_hi().read().bits() as u64;
-
-            // Need to check for rollover of lo in between hi and lo read
-            // If there is rollover, repeat
-            if mtime_hi == mtime_hi2 {
-                return (mtime_hi << 32) | mtime_lo;
-            }
-        }
+        clint().mtimer().mtime().read()
     }
 
     fn schedule_wake(&self, at: u64, waker: &core::task::Waker) {

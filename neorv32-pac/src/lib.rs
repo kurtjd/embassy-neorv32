@@ -9,72 +9,28 @@ pub const NVIC_PRIO_BITS: u8 = 4;
 use generic::*;
 #[doc = r"Common register and bit access and modify traits"]
 pub mod generic;
-#[cfg(feature = "rt")]
-unsafe extern "C" {
-    fn TWD_FIRQ();
-    fn CFS_FIRQ();
-    fn UART0_FIRQ();
-    fn UART1_FIRQ();
-    fn TRACER_FIRQ();
-    fn SPI_FIRQ();
-    fn TWI_FIRQ();
-    fn GPIO_FIRQ();
-    fn NEOLED_FIRQ();
-    fn DMA_FIRQ();
-    fn SDI_FIRQ();
-    fn GPTMR_FIRQ();
-    fn ONEWIRE_FIRQ();
-    fn SLINK_FIRQ();
-    fn TRNG_FIRQ();
-}
-#[doc(hidden)]
-#[repr(C)]
-pub union Vector {
-    pub _handler: unsafe extern "C" fn(),
-    pub _reserved: usize,
-}
-#[cfg(feature = "rt")]
-#[doc(hidden)]
-#[unsafe(no_mangle)]
-pub static __EXTERNAL_INTERRUPTS: [Vector; 16] = [
-    Vector { _handler: TWD_FIRQ },
-    Vector { _handler: CFS_FIRQ },
-    Vector {
-        _handler: UART0_FIRQ,
-    },
-    Vector {
-        _handler: UART1_FIRQ,
-    },
-    Vector { _reserved: 0 },
-    Vector {
-        _handler: TRACER_FIRQ,
-    },
-    Vector { _handler: SPI_FIRQ },
-    Vector { _handler: TWI_FIRQ },
-    Vector {
-        _handler: GPIO_FIRQ,
-    },
-    Vector {
-        _handler: NEOLED_FIRQ,
-    },
-    Vector { _handler: DMA_FIRQ },
-    Vector { _handler: SDI_FIRQ },
-    Vector {
-        _handler: GPTMR_FIRQ,
-    },
-    Vector {
-        _handler: ONEWIRE_FIRQ,
-    },
-    Vector {
-        _handler: SLINK_FIRQ,
-    },
-    Vector {
-        _handler: TRNG_FIRQ,
-    },
-];
-#[doc(hidden)]
+#[doc = r" Interrupt numbers, priority levels, and HART IDs."]
 pub mod interrupt;
-pub use self::interrupt::Interrupt;
+riscv_peripheral :: clint_codegen ! (Clint , base 0xFFF40000 , mtime_freq 100000000 , harts [crate :: interrupt :: Hart :: H0 => 0]);
+impl Clint {
+    #[doc = r" Steal an instance of this peripheral"]
+    #[doc = r""]
+    #[doc = r" # Safety"]
+    #[doc = r""]
+    #[doc = r" Ensure that the new instance of the peripheral cannot be used in a way"]
+    #[doc = r" that may race with any existing instances, for example by only"]
+    #[doc = r" accessing read-only or write-only registers, or by consuming the"]
+    #[doc = r" original peripheral and using critical sections to coordinate"]
+    #[doc = r" access between multiple new instances."]
+    #[doc = r""]
+    #[doc = r" Additionally, other software such as HALs may rely on only one"]
+    #[doc = r" peripheral instance existing to ensure memory safety; ensure"]
+    #[doc = r" no stolen instances are passed to such software."]
+    #[inline]
+    pub unsafe fn steal() -> Self {
+        Self::new()
+    }
+}
 #[doc = "Custom functions subsystem"]
 pub type Cfs = crate::Periph<cfs::RegisterBlock, 0xffeb_0000>;
 impl core::fmt::Debug for Cfs {
@@ -138,15 +94,6 @@ impl core::fmt::Debug for Onewire {
 }
 #[doc = "1-Wire Interface Controller"]
 pub mod onewire;
-#[doc = "Core local interruptor"]
-pub type Clint = crate::Periph<clint::RegisterBlock, 0xfff4_0000>;
-impl core::fmt::Debug for Clint {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        f.debug_struct("Clint").finish()
-    }
-}
-#[doc = "Core local interruptor"]
-pub mod clint;
 #[doc = "Primary universal asynchronous receiver and transmitter"]
 pub type Uart0 = crate::Periph<uart0::RegisterBlock, 0xfff5_0000>;
 impl core::fmt::Debug for Uart0 {

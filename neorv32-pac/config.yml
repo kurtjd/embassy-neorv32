@@ -1,0 +1,188 @@
+riscv_config:
+  core_interrupts:
+    - name: "MachineSoft"
+      value: 3
+      description: "Machine Software Interrupt"
+    - name: "MachineTimer"
+      value: 7
+      description: "Machine Timer Interrupt"
+    - name: "MachineExternal"
+      value: 11
+      description: "Machine External Interrupt"
+    - name: "TWD"
+      value: 16
+      description: "TWD FIFO Level Interrupt"
+    - name: "CFS"
+      value: 17
+      description: "CFS (user-defined) Interrupt"
+    - name: "UART0"
+      value: 18
+      description: "UART0 FIFO Level Interrupt"
+    - name: "UART1"
+      value: 19
+      description: "UART1 FIFO Level Interrupt"
+    - name: "TRACER"
+      value: 21
+      description: "Tracing Stop-Address Match Interrupt"
+    - name: "SPI"
+      value: 22
+      description: "SPI FIFO Level Interrupt"
+    - name: "TWI"
+      value: 23
+      description: "TWI FIFO Level Interrupt"
+    - name: "GPIO"
+      value: 24
+      description: "GPIO FIFO Level Interrupt"
+    - name: "NEOLED"
+      value: 25
+      description: "NEOLED TX FIFO Level Interrupt"
+    - name: "DMA"
+      value: 26
+      description: "DMA Transfer Done Interrupt"
+    - name: "SDI"
+      value: 27
+      description: "SDI FIFO Level Interrupt"
+    - name: "GPTMR"
+      value: 28
+      description: "General Purpose Timer Interrupt"
+    - name: "ONEWIRE"
+      value: 29
+      description: "1-Wire Idle Interrupt"
+    - name: "SLINK"
+      value: 30
+      description: "SLINK FIFO Level Interrupt"
+    - name: "TRNG"
+      value: 31
+      description: "TRNG FIFO Level Interrupt"
+
+  exceptions:
+    - name: "InstructionMisaligned"
+      value: 0
+      description: "Instruction Address Misaligned"
+    - name: "InstructionFault"
+      value: 1
+      description: "Instruction Access Fault"
+    - name: "IllegalInstruction"
+      value: 2
+      description: "Illegal Instruction"
+    - name: "Breakpoint"
+      value: 3
+      description: "Software Breakpoint/HW Trigger"
+    - name: "LoadMisaligned"
+      value: 4
+      description: "Load Address Misaligned"
+    - name: "LoadFault"
+      value: 5
+      description: "Load Access Fault"
+    - name: "StoreMisaligned"
+      value: 6
+      description: "Store Address Misaligned"
+    - name: "StoreFault"
+      value: 7
+      description: "Store Access Fault"
+    - name: "UserEnvCall"
+      value: 8
+      description: "Environment Call From U-Mode"
+    - name: "MachineEnvCall"
+      value: 11
+      description: "Environment Call From M-Mode"
+
+  priorities:
+    - name: "P1"
+      value: 1
+      description: "Priority level 1"
+    - name: "P2"
+      value: 2
+      description: "Priority level 2"
+    - name: "P3"
+      value: 3
+      description: "Priority level 3"
+    - name: "P4"
+      value: 4
+      description: "Priority level 4"
+    - name: "P5"
+      value: 5
+      description: "Priority level 5"
+    - name: "P6"
+      value: 6
+      description: "Priority level 6"
+    - name: "P7"
+      value: 7
+      description: "Priority level 7"
+    - name: "P8"
+      value: 8
+      description: "Priority level 8"
+    - name: "P9"
+      value: 9
+      description: "Priority level 9"
+    - name: "P10"
+      value: 10
+      description: "Priority level 10"
+    - name: "P11"
+      value: 11
+      description: "Priority level 11"
+    - name: "P12"
+      value: 12
+      description: "Priority level 12"
+    - name: "P13"
+      value: 13
+      description: "Priority level 13"
+    - name: "P14"
+      value: 14
+      description: "Priority level 14"
+    - name: "P15"
+      value: 15
+      description: "Priority level 15"
+    - name: "P16"
+      value: 16
+      description: "Priority level 16"
+    - name: "P17"
+      value: 17
+      description: "Priority level 17"
+    - name: "P18"
+      value: 18
+      description: "Priority level 18"
+    - name: "P19"
+      value: 19
+      description: "Priority level 19"
+    - name: "P20"
+      value: 20
+      description: "Priority level 20"
+    - name: "P21"
+      value: 21
+      description: "Priority level 21"
+    - name: "P22"
+      value: 22
+      description: "Priority level 22"
+    - name: "P23"
+      value: 23
+      description: "Priority level 23"
+    - name: "P24"
+      value: 24
+      description: "Priority level 24"
+    - name: "P25"
+      value: 25
+      description: "Priority level 25"
+    - name: "P26"
+      value: 26
+      description: "Priority level 26"
+    - name: "P27"
+      value: 27
+      description: "Priority level 27"
+    - name: "P28"
+      value: 28
+      description: "Priority level 28"
+    - name: "P29"
+      value: 29
+      description: "Priority level 29"
+
+  harts:
+    - name: "H0"
+      value: 0
+      description: "Hart 0"
+
+  clint:
+    name: "CLINT"
+    mtime_freq: 100000000
+
+  base_isa: "rv32i"
