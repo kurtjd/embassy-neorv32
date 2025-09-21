@@ -41,7 +41,6 @@ pub enum CoreInterrupt {
 }
 
 // TODO: Figure out bug that causes this to be compield even without rt feature
-/*
 #[doc = r" Exception sources in the device."]
 # [riscv :: pac_enum (unsafe ExceptionNumber)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -67,9 +66,6 @@ pub enum Exception {
     #[doc = "11 - Environment Call From M-Mode"]
     MachineEnvCall = 11,
 }
-*/
-// TODO: Remove this after figuring out above bug
-pub use riscv::interrupt::Exception;
 
 #[doc = r" Priority levels in the device"]
 # [riscv :: pac_enum (unsafe PriorityNumber)]

@@ -19,6 +19,3 @@ svd2rust:
 - `pac_enum` macro for ExceptionNumer seems to be requiring rt but not for CoreInterruptNumber?
 - `pac_enum` docs says it can't be used for CoreInterruptNumber, but svd2rust generates it?
 - Unnecessary unsafe for some regs?
-
-riscv-rt:
-- See if there is a way to use `no-interrupts` feature (to allow for custom core interrupt sources) but keep DefaultHandler for unused ones
