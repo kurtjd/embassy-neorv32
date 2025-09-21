@@ -276,6 +276,16 @@ impl<T: Instance, M: Mode> Drop for Uart<T, M> {
     }
 }
 
+// Convenience for writing formatted strings to UART
+// TODO: Other Embassy HALs don't seem to do this so look at other approaches
+// Don't like how it requires an &mut
+impl<T: Instance, M: Mode> core::fmt::Write for Uart<T, M> {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        self.puts_blocking(s);
+        Ok(())
+    }
+}
+
 /// UART operating mode
 #[allow(private_bounds)]
 pub trait Mode: crate::Sealed {}

@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
 
+use core::fmt::Write;
 use embassy_neorv32::uart::Uart;
 use embassy_neorv32::wdt::{ResetCause, Wdt};
 use embassy_time::Timer;
@@ -11,7 +12,7 @@ async fn main(_spawner: embassy_executor::Spawner) {
     let p = embassy_neorv32::init();
 
     // Setup UART just for printing WDT state
-    let uart = Uart::new_blocking(p.uart0, 50_000_000, true, false);
+    let mut uart = Uart::new_blocking(p.uart0, 50_000_000, true, false);
 
     // Setup WDT with timeout of 1ms and enable it then lock it
     let wdt = Wdt::new(p.wdt);
@@ -21,9 +22,12 @@ async fn main(_spawner: embassy_executor::Spawner) {
 
     // Print the last reset cause
     let reset_cause = wdt.reset_cause();
-    uart.puts_blocking("Last hardware reset cause: ");
-    uart.puts_blocking(reset_cause.as_str());
-    uart.putc_blocking('\n');
+    writeln!(
+        &mut uart,
+        "Last hardware reset cause: {}",
+        reset_cause.as_str()
+    )
+    .unwrap();
 
     // On first reset, let's see if illegal access triggers a reset
     if matches!(reset_cause, ResetCause::External) {

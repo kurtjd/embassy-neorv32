@@ -1,5 +1,6 @@
 #![no_std]
 mod time_driver;
+pub mod trng;
 pub mod uart;
 pub mod wdt;
 
