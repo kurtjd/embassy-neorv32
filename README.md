@@ -2,13 +2,19 @@
 An Embassy HAL for the RISCV-based [NEORV32](https://github.com/stnolting/neorv32) SoC/microcontroller
 
 ## Overview
-Just a very basic UART and time-driver for now as a PoC.
+This HAL is being designed to work in both a traditional synchronous context
+(without the need for Embassy or any other async executor) as well as an asynchronous context with
+Embassy support. Main focus now is on building the synchronous/blocking HAL before tackling the async HAL.
 
 Still quite a bit to do to get all peripherals fully supported, however the `embassy-neorv32/examples`
 folder can serve as a good base for running general Rust code on a simulated NEORV32.
 
 This is currently being built to only support a single-core, rv32i, CLINT-enabled, cacheless configuration.
 Planning to investigate support for a "max" configuration in the future.
+
+## Peripherals Currently Supported
+- Synchronous UART
+- Watchdog Timer (WDT)
 
 ## TODO
 - Iron out a few kinks in the SVD, svd2rust, and riscv-rt
@@ -29,7 +35,7 @@ Planning to investigate support for a "max" configuration in the future.
 - Clone [neorv32](https://github.com/stnolting/neorv32)
 - Update `embassy-neorv32/examples/run-sim` to your `neorv32` path
 - Install [GHDL](https://github.com/ghdl/ghdl) simulator
-- Install [cargo-binutils](https://github.com/rust-embedded/cargo-binutils/)
+- Install [llvm-objcopy](https://llvm.org/docs/CommandGuide/llvm-objcopy.html)
 - Run `cd embassy-neorv32/examples`
 - Run `cargo run --release --bin hello-world`
 

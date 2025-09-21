@@ -39,8 +39,7 @@ impl<T: Instance> Uart<T, Blocking> {
                 .modify(|_, w| w.uart_ctrl_hwfc_en().set_bit());
         }
 
-        // TODO: Get main clock freq either statically or runtime via SysInfo
-        let mut baud_div = 100_000_000 / (2 * baud_rate);
+        let mut baud_div = crate::CPU_CLK_FREQ / (2 * baud_rate);
         let mut prsc_sel = 0;
 
         // Calculate clock prescaler and baud rate prescaler
@@ -277,28 +276,30 @@ impl<T: Instance, M: Mode> Drop for Uart<T, M> {
     }
 }
 
-trait Sealed {}
-
+/// UART operating mode
 #[allow(private_bounds)]
-pub trait Mode: Sealed {}
+pub trait Mode: crate::Sealed {}
 
+/// Blocking (sync) UART
 pub struct Blocking;
-impl Sealed for Blocking {}
+impl crate::Sealed for Blocking {}
 impl Mode for Blocking {}
 
 // TODO: Actually add async support
+/// Async UART
 pub struct Async;
-impl Sealed for Async {}
+impl crate::Sealed for Async {}
 impl Mode for Async {}
 
+/// A valid UART peripheral
 #[allow(private_bounds)]
-pub trait Instance: Sealed {
+pub trait Instance: crate::Sealed {
     fn reg() -> &'static pac::uart0::RegisterBlock;
 }
 
 macro_rules! impl_instance {
     ($periph:ident) => {
-        impl Sealed for pac::$periph {}
+        impl crate::Sealed for pac::$periph {}
         impl Instance for pac::$periph {
             #[inline(always)]
             fn reg() -> &'static pac::uart0::RegisterBlock {
