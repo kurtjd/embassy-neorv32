@@ -1,7 +1,8 @@
 #![no_std]
 mod time_driver;
 pub mod uart;
-use neorv32_pac::Peripherals;
+pub use pac;
+use pac::Peripherals;
 
 pub fn init() -> Peripherals {
     let p = Peripherals::take().expect("Perhipherals must not already be taken");
