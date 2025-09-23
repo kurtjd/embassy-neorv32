@@ -15,9 +15,9 @@ Planning to investigate support for a "max" configuration in the future.
 ## Peripherals Currently Supported
 - SysInfo
 - WDT
-- Synchronous UART
-- Synchronous TRNG
-- Synchronous GPTMR
+- Blocking UART
+- Blocking TRNG
+- Blocking GPTMR
 
 ## TODO
 - Iron out a few kinks in the SVD, svd2rust, and riscv-rt
