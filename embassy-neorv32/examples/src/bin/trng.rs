@@ -16,11 +16,11 @@ async fn main(_spawner: embassy_executor::Spawner) {
     // Setup TRNG
     let trng = Trng::new_blocking(p.trng);
     if trng.sim_mode() {
-        uart.puts_blocking("Running in simulation so PRNG is used\n");
+        uart.blocking_write(b"Running in simulation so PRNG is used\n");
     }
 
     loop {
-        let rand = trng.blocking_read();
+        let rand = trng.blocking_read_byte();
         writeln!(&mut uart, "Random byte: 0x{rand:02X}").unwrap();
         Timer::after_micros(200).await;
     }

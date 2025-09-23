@@ -31,15 +31,15 @@ async fn main(_spawner: embassy_executor::Spawner) {
 
     // On first reset, let's see if illegal access triggers a reset
     if matches!(reset_cause, ResetCause::External) {
-        uart.puts_blocking("Forcing HW reset...\n");
+        uart.blocking_write(b"Forcing HW reset...\n");
         wdt.force_hw_reset();
     }
 
     // On subsequent resets we feed a few times then wait for timeout reset to trigger
     for _ in 0..10 {
-        uart.puts_blocking("Feeding watchdog...\n");
+        uart.blocking_write(b"Feeding watchdog...\n");
         wdt.feed();
         Timer::after_micros(200).await;
     }
-    uart.puts_blocking("Waiting for watchdog timeout...\n");
+    uart.blocking_write(b"Waiting for watchdog timeout...\n");
 }

@@ -1,22 +1,14 @@
 //! UART
 use core::marker::PhantomData;
 
-/// UART Error
-pub enum Error {
-    /// TX FIFO is full
-    TxFifoFull,
-    /// RX FIFO is empty
-    RxFifoEmpty,
-}
-
 /// UART driver capable of Rx and Tx
-pub struct Uart<T: Instance, M: Mode> {
+pub struct Uart<T: Instance, M: IoMode> {
     _instance: PhantomData<T>,
     _mode: PhantomData<M>,
 }
 
 impl<T: Instance> Uart<T, Blocking> {
-    /// Creates a new blocking (sync) UART driver with given baud rate
+    /// Creates a new blocking UART driver with given baud rate
     ///
     /// Enables simulation mode if `sim` is true and hardware flow control if `flow_control` is true
     pub fn new_blocking(_instance: T, baud_rate: u32, sim: bool, flow_control: bool) -> Self {
@@ -66,55 +58,6 @@ impl<T: Instance> Uart<T, Blocking> {
         uart
     }
 
-    /// Reads a byte from RX FIFO if not empty, otherwise error
-    pub fn read_byte(&self) -> Result<u8, Error> {
-        if !self.rx_fifo_empty() {
-            Ok(T::reg().data().read().bits() as u8)
-        } else {
-            Err(Error::RxFifoEmpty)
-        }
-    }
-
-    /// Reads bytes from RX FIFO if not empty until buffer is full, otherwise error
-    pub fn read(&self, buf: &mut [u8]) -> Result<(), Error> {
-        for byte in buf.iter_mut() {
-            *byte = self.read_byte()?;
-        }
-
-        Ok(())
-    }
-
-    /// Writes a byte to TX FIFO if not full, otherwise error
-    pub fn write_byte(&self, byte: u8) -> Result<(), Error> {
-        if !self.tx_fifo_full() {
-            T::reg().data().write(|w| unsafe { w.bits(byte as u32) });
-            Ok(())
-        } else {
-            Err(Error::TxFifoFull)
-        }
-    }
-
-    /// Writes bytes to TX FIFO if not full, otherwise error
-    pub fn write(&self, bytes: &[u8]) -> Result<(), Error> {
-        for byte in bytes {
-            self.write_byte(*byte)?;
-        }
-
-        Ok(())
-    }
-
-    /// Writes a character to TX FIFO if not full, otherwise error
-    #[inline(always)]
-    pub fn putc(&self, c: char) -> Result<(), Error> {
-        self.write_byte(c as u8)
-    }
-
-    /// Writes a string to TX FIFO if not full, otherwise error
-    #[inline(always)]
-    pub fn puts(&self, s: &str) -> Result<(), Error> {
-        self.write(s.as_bytes())
-    }
-
     /// Enable or disable RX FIFO not empty interrupt
     #[inline(always)]
     pub fn en_irq_rx_nempty(&self, enabled: bool) {
@@ -152,12 +95,12 @@ impl<T: Instance> Uart<T, Async> {
     /// Creates a new async UART driver with given baud rate
     ///
     /// Enables simulation mode if `sim` is true and hardware flow control if `flow_control` is true
-    pub fn new(_instance: T, _baud_rate: u32, _sim: bool, _flow_control: bool) -> Self {
+    pub fn new_async(_instance: T, _baud_rate: u32, _sim: bool, _flow_control: bool) -> Self {
         todo!()
     }
 }
 
-impl<T: Instance, M: Mode> Uart<T, M> {
+impl<T: Instance, M: IoMode> Uart<T, M> {
     #[inline(always)]
     fn enable(&self) {
         T::reg().ctrl().modify(|_, w| w.uart_ctrl_en().set_bit());
@@ -174,41 +117,29 @@ impl<T: Instance, M: Mode> Uart<T, M> {
     }
 
     /// Reads a byte from RX FIFO, blocking if empty
-    pub fn read_byte_blocking(&self) -> u8 {
+    pub fn blocking_read_byte(&self) -> u8 {
         while self.rx_fifo_empty() {}
         T::reg().data().read().bits() as u8
     }
 
     /// Reads bytes from RX FIFO until buffer is full, blocking if empty
-    pub fn read_blocking(&self, buf: &mut [u8]) {
-        for byte in buf.iter_mut() {
-            *byte = self.read_byte_blocking();
+    pub fn blocking_read(&self, buf: &mut [u8]) {
+        for byte in buf {
+            *byte = self.blocking_read_byte();
         }
     }
 
     /// Writes a byte to TX FIFO, blocking if full
-    pub fn write_byte_blocking(&self, byte: u8) {
+    pub fn blocking_write_byte(&self, byte: u8) {
         while self.tx_fifo_full() {}
         T::reg().data().write(|w| unsafe { w.bits(byte as u32) });
     }
 
     /// Writes bytes to TX FIFO, blocking if full
-    pub fn write_blocking(&self, bytes: &[u8]) {
+    pub fn blocking_write(&self, bytes: &[u8]) {
         for byte in bytes {
-            self.write_byte_blocking(*byte);
+            self.blocking_write_byte(*byte);
         }
-    }
-
-    /// Writes a character to TX FIFO, blocking if full
-    #[inline(always)]
-    pub fn putc_blocking(&self, c: char) {
-        self.write_byte_blocking(c as u8);
-    }
-
-    /// Writes a string to TX FIFO, blocking if full
-    #[inline(always)]
-    pub fn puts_blocking(&self, s: &str) {
-        self.write_blocking(s.as_bytes());
     }
 
     /// Returns true if RX FIFO is empty
@@ -269,7 +200,7 @@ impl<T: Instance, M: Mode> Uart<T, M> {
     }
 }
 
-impl<T: Instance, M: Mode> Drop for Uart<T, M> {
+impl<T: Instance, M: IoMode> Drop for Uart<T, M> {
     fn drop(&mut self) {
         self.flush();
         self.disable();
@@ -279,27 +210,27 @@ impl<T: Instance, M: Mode> Drop for Uart<T, M> {
 // Convenience for writing formatted strings to UART
 // TODO: Other Embassy HALs don't seem to do this so look at other approaches
 // Don't like how it requires an &mut
-impl<T: Instance, M: Mode> core::fmt::Write for Uart<T, M> {
+impl<T: Instance, M: IoMode> core::fmt::Write for Uart<T, M> {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
-        self.puts_blocking(s);
+        self.blocking_write(s.as_bytes());
         Ok(())
     }
 }
 
-/// UART operating mode
+/// UART IO mode
 #[allow(private_bounds)]
-pub trait Mode: crate::Sealed {}
+pub trait IoMode: crate::Sealed {}
 
-/// Blocking (sync) UART
+/// Blocking UART
 pub struct Blocking;
 impl crate::Sealed for Blocking {}
-impl Mode for Blocking {}
+impl IoMode for Blocking {}
 
 // TODO: Actually add async support
 /// Async UART
 pub struct Async;
 impl crate::Sealed for Async {}
-impl Mode for Async {}
+impl IoMode for Async {}
 
 /// A valid UART peripheral
 #[allow(private_bounds)]

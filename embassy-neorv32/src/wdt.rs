@@ -40,7 +40,7 @@ impl From<u8> for ResetCause {
     }
 }
 
-pub struct Wdt<T: Instance, M: Mode> {
+pub struct Wdt<T: Instance, M: LockMode> {
     _instance: PhantomData<T>,
     _mode: PhantomData<M>,
 }
@@ -112,7 +112,7 @@ impl<T: Instance> Wdt<T, Unlocked> {
     }
 }
 
-impl<T: Instance, M: Mode> Wdt<T, M> {
+impl<T: Instance, M: LockMode> Wdt<T, M> {
     /// Resets WDT timeout counter
     pub fn feed(&self) {
         const PASSWORD: u32 = 0x709D1AB3;
@@ -142,21 +142,21 @@ impl<T: Instance, M: Mode> Wdt<T, M> {
     }
 }
 
-/// WDT operating mode (locked or unlocked)
+/// WDT lock mode
 #[allow(private_bounds)]
-pub trait Mode: crate::Sealed {}
+pub trait LockMode: crate::Sealed {}
 
 /// WDT is unlocked and all registers can be written to
 pub struct Unlocked;
 impl crate::Sealed for Unlocked {}
-impl Mode for Unlocked {}
+impl LockMode for Unlocked {}
 
 /// WDT is locked and certain registers cannot be written to
 ///
 /// Attempting to circumvent the HAL and writing anyway will trigger reset
 pub struct Locked;
 impl crate::Sealed for Locked {}
-impl Mode for Locked {}
+impl LockMode for Locked {}
 
 /// A valid WDT peripheral
 #[allow(private_bounds)]

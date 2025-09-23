@@ -1,20 +1,14 @@
 //! True Random-Number Generator (TRNG)
 use core::marker::PhantomData;
 
-/// TRNG Error
-pub enum Error {
-    /// Data not available
-    NotAvailable,
-}
-
 /// True Random-Number Generator (TRNG) Driver
-pub struct Trng<T: Instance, M: Mode> {
+pub struct Trng<T: Instance, M: IoMode> {
     _instance: PhantomData<T>,
     _mode: PhantomData<M>,
 }
 
 impl<T: Instance> Trng<T, Blocking> {
-    /// Returns a new instance of a blocking (sync) TRNG and enables it
+    /// Returns a new instance of a blocking TRNG and enables it
     pub fn new_blocking(_instance: T) -> Self {
         let trng = Self {
             _instance: PhantomData,
@@ -24,25 +18,16 @@ impl<T: Instance> Trng<T, Blocking> {
         trng.enable();
         trng
     }
-
-    /// Reads a byte from the TRNG if available, returns error otherwise
-    pub fn read(&self) -> Result<u8, Error> {
-        if self.data_available() {
-            Ok(T::reg().data().read().trng_data().bits())
-        } else {
-            Err(Error::NotAvailable)
-        }
-    }
 }
 
 impl<T: Instance> Trng<T, Async> {
     /// Returns a new instance of an async TRNG
-    pub fn new(_instance: T) -> Self {
+    pub fn new_async(_instance: T) -> Self {
         todo!()
     }
 }
 
-impl<T: Instance, M: Mode> Trng<T, M> {
+impl<T: Instance, M: IoMode> Trng<T, M> {
     /// Enables the TRNG
     #[inline(always)]
     pub fn enable(&self) {
@@ -84,26 +69,33 @@ impl<T: Instance, M: Mode> Trng<T, M> {
     }
 
     /// Reads a byte from the TRNG if available, blocking if not
-    pub fn blocking_read(&self) -> u8 {
+    pub fn blocking_read_byte(&self) -> u8 {
         while !self.data_available() {}
         T::reg().data().read().trng_data().bits()
     }
+
+    /// Reads bytes from TRNG FIFO until buffer is full, blocking if empty
+    pub fn blocking_read(&self, buf: &mut [u8]) {
+        for byte in buf {
+            *byte = self.blocking_read_byte();
+        }
+    }
 }
 
-/// TRNG operating mode
+/// TRNG IO mode
 #[allow(private_bounds)]
-pub trait Mode: crate::Sealed {}
+pub trait IoMode: crate::Sealed {}
 
-/// Blocking (sync) TRNG
+/// Blocking TRNG
 pub struct Blocking;
 impl crate::Sealed for Blocking {}
-impl Mode for Blocking {}
+impl IoMode for Blocking {}
 
 // TODO: Actually add async support
 /// Async TRNG
 pub struct Async;
 impl crate::Sealed for Async {}
-impl Mode for Async {}
+impl IoMode for Async {}
 
 /// A valid TRNG peripheral
 #[allow(private_bounds)]

@@ -13,7 +13,7 @@ async fn main(_spawner: embassy_executor::Spawner) {
 
     loop {
         // Note: '\n' seems necessary for UART writes for sim to flush output
-        uart.puts_blocking("Hello world\n");
+        uart.blocking_write(b"Hello world\n");
         Timer::after_millis(1).await;
     }
 }
