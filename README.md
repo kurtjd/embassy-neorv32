@@ -13,10 +13,11 @@ This is currently being built to only support a single-core, rv32i, CLINT-enable
 Planning to investigate support for a "max" configuration in the future.
 
 ## Peripherals Currently Supported
-- Synchronous UART
-- Watchdog Timer (WDT)
-- Synchronous TRNG
 - SysInfo
+- WDT
+- Synchronous UART
+- Synchronous TRNG
+- Synchronous GPTMR
 
 ## TODO
 - Iron out a few kinks in the SVD, svd2rust, and riscv-rt

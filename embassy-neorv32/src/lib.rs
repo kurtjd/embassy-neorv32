@@ -1,4 +1,5 @@
 #![no_std]
+pub mod gptmr;
 pub mod sysinfo;
 mod time_driver;
 pub mod trng;
