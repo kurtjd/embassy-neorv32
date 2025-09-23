@@ -36,7 +36,7 @@ impl<T: Instance> Uart<T, Blocking> {
 
         // Calculate clock prescaler and baud rate prescaler
         // See: https://github.com/stnolting/neorv32/blob/main/sw/lib/source/neorv32_uart.c#L47
-        while baud_div >= 0xfff {
+        while baud_div >= 0x3ff {
             if prsc_sel == 2 || prsc_sel == 4 {
                 baud_div >>= 3;
             } else {
@@ -45,13 +45,11 @@ impl<T: Instance> Uart<T, Blocking> {
             prsc_sel += 1;
         }
 
-        // TODO: Docs give conflicting info on baud rate prescaler size (10 vs 12 bits). Investigate.
-        // Going with 12 bits for now
         T::reg().ctrl().modify(|_, w| unsafe {
             w.uart_ctrl_prsc()
                 .bits(prsc_sel & 0b111)
                 .uart_ctrl_baud()
-                .bits((baud_div as u16 - 1) & 0xfff)
+                .bits((baud_div as u16 - 1) & 0x3ff)
         });
 
         uart.enable();
