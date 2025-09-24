@@ -1,7 +1,24 @@
 //! General Purpose Timer (GPTMR)
 use crate::peripherals::GPTMR;
+use core::future::poll_fn;
 use core::marker::PhantomData;
+use core::task::Poll;
 use embassy_hal_internal::{Peri, PeripheralType};
+use embassy_sync::waitqueue::AtomicWaker;
+use pac::interrupt::CoreInterrupt;
+use portable_atomic::{AtomicBool, Ordering};
+
+static GPTMR_WAKER: AtomicWaker = AtomicWaker::new();
+static WAKE_FLAG: AtomicBool = AtomicBool::new(false);
+
+#[riscv_rt::core_interrupt(CoreInterrupt::GPTMR)]
+fn gptmr_handler() {
+    unsafe { Gptmr::<Async>::irq_clear() };
+    // There is no internal way to check if IRQ happened after clearing IRQ
+    // So need a flag for waker to check
+    WAKE_FLAG.store(true, Ordering::SeqCst);
+    GPTMR_WAKER.wake();
+}
 
 /// GPTMR Prescaler
 pub enum Prescaler {
@@ -68,6 +85,38 @@ pub struct Gptmr<'d, M: WaitMode> {
 impl<'d> Gptmr<'d, Blocking> {
     /// Returns a new blocking GPTMR with given prescaler
     pub fn new_blocking<T: Instance>(_instance: Peri<'d, T>, psc: Prescaler) -> Self {
+        Self::new_inner(_instance, psc)
+    }
+}
+
+impl<'d> Gptmr<'d, Async> {
+    /// Returns a new async GPTMR with given prescaler
+    pub fn new_async<T: Instance>(_instance: Peri<'d, T>, psc: Prescaler) -> Self {
+        let gptmr = Self::new_inner(_instance, psc);
+        unsafe { riscv::interrupt::enable_interrupt(CoreInterrupt::GPTMR) };
+        gptmr
+    }
+
+    pub async fn wait(&self) {
+        // TODO: I think there might be issues with ISR triggering once before this is called
+        // Also hanging when I use Acquire/Release ordering is suspect
+        poll_fn(|cx| {
+            if WAKE_FLAG
+                .compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst)
+                .is_ok()
+            {
+                Poll::Ready(())
+            } else {
+                GPTMR_WAKER.register(cx.waker());
+                Poll::Pending
+            }
+        })
+        .await
+    }
+}
+
+impl<'d, M: WaitMode> Gptmr<'d, M> {
+    fn new_inner<T: Instance>(_instance: Peri<'d, T>, psc: Prescaler) -> Self {
         let gptmr = Self {
             reg: T::reg(),
             _phantom: PhantomData,
@@ -76,16 +125,7 @@ impl<'d> Gptmr<'d, Blocking> {
         gptmr.set_prescaler(psc);
         gptmr
     }
-}
 
-impl<'d> Gptmr<'d, Async> {
-    /// Returns a new async GPTMR with given prescaler
-    pub fn new_async<T: Instance>(_instance: Peri<'d, T>, _psc: Prescaler) -> Self {
-        todo!()
-    }
-}
-
-impl<'d, M: WaitMode> Gptmr<'d, M> {
     /// Set the GPTMR prescaler
     #[inline(always)]
     pub fn set_prescaler(&self, psc: Prescaler) {
@@ -151,16 +191,7 @@ impl<'d, M: WaitMode> Gptmr<'d, M> {
     /// Wait for GPTMR counter to reach its threshold, blocking in the meantime
     pub fn blocking_wait(&self) {
         while !self.irq_pending() {}
-
-        // TODO: Investigate why this needs calling in a loop
-        // Calling clear then waiting until irq is no longer pending just seems to hang
-        // There are very likely several timing/race issues with this whole approach and needs revisiting
-        while self.irq_pending() {
-            // SAFETY: We own the GPTMR
-            unsafe {
-                Self::irq_clear();
-            }
-        }
+        unsafe { Self::irq_clear() };
     }
 
     /// Clears a pending GPTMR interrupt
@@ -171,9 +202,13 @@ impl<'d, M: WaitMode> Gptmr<'d, M> {
     /// The caller is responsible for ensuring this does not cause unexpected behavior
     #[inline(always)]
     pub unsafe fn irq_clear() {
-        unsafe { &*pac::Gptmr::ptr() }
-            .ctrl()
-            .modify(|_, w| w.gptmr_ctrl_irq_clr().set_bit());
+        let reg = unsafe { &*pac::Gptmr::ptr() };
+
+        // TODO: Investigate why this needs calling in a loop
+        // Calling clear then waiting until irq is no longer pending just seems to hang
+        while reg.ctrl().read().gptmr_ctrl_irq_pnd().bit_is_set() {
+            reg.ctrl().modify(|_, w| w.gptmr_ctrl_irq_clr().set_bit());
+        }
     }
 }
 

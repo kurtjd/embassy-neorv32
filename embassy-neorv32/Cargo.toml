@@ -23,5 +23,9 @@ pac = { package = "neorv32-pac", path = "../neorv32-pac", features = [
     "rt",
     "critical-section",
 ] }
+# TODO: Don't use this if target has A extension
+portable-atomic = { version = "1.11.1", default-features = false, features = [
+    "unsafe-assume-single-core",
+] }
 riscv = { version = "0.15.0", features = ["critical-section-single-hart"] }
 riscv-rt = "0.16.0"

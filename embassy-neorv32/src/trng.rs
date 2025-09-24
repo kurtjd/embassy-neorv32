@@ -5,16 +5,16 @@ use core::marker::PhantomData;
 use core::task::Poll;
 use embassy_hal_internal::{Peri, PeripheralType};
 use embassy_sync::waitqueue::AtomicWaker;
+use pac::interrupt::CoreInterrupt;
 
 static TRNG_WAKER: AtomicWaker = AtomicWaker::new();
 
-// TODO: Come up with strategy to bind interrupt similar to Embassy's internal cortex-m interrupt hal
-#[riscv_rt::core_interrupt(pac::interrupt::CoreInterrupt::TRNG)]
+#[riscv_rt::core_interrupt(CoreInterrupt::TRNG)]
 fn trng_handler() {
     // There doesn't appear to be any other way to ack the interrupt for TRNG
     // other than reading from the FIFO (which we don't want to do here)
     // or just disabling it
-    riscv::interrupt::disable_interrupt(pac::interrupt::CoreInterrupt::TRNG);
+    riscv::interrupt::disable_interrupt(CoreInterrupt::TRNG);
     TRNG_WAKER.wake();
 }
 
@@ -44,7 +44,7 @@ impl<'d> Trng<'d, Async> {
                 Poll::Ready(self.blocking_read_byte())
             } else {
                 // Need to always re-enable interrupt before going to sleep
-                unsafe { riscv::interrupt::enable_interrupt(pac::interrupt::CoreInterrupt::TRNG) };
+                unsafe { riscv::interrupt::enable_interrupt(CoreInterrupt::TRNG) };
                 TRNG_WAKER.register(cx.waker());
                 Poll::Pending
             }

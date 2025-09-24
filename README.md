@@ -17,7 +17,7 @@ Planning to investigate support for a "max" configuration in the future.
 - WDT
 - Blocking UART
 - Blocking and Async TRNG
-- Blocking GPTMR
+- Blocking and Async GPTMR
 
 ## TODO
 - Iron out a few kinks in the SVD, svd2rust, and riscv-rt
