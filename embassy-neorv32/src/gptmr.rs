@@ -58,16 +58,16 @@ impl From<u8> for Prescaler {
 }
 
 /// General Purpose Timer (GPTMR) Driver
-pub struct Gptmr<T: Instance, M: WaitMode> {
-    _instance: PhantomData<T>,
+pub struct Gptmr<M: WaitMode> {
+    reg: &'static pac::gptmr::RegisterBlock,
     _mode: PhantomData<M>,
 }
 
-impl<T: Instance> Gptmr<T, Blocking> {
+impl Gptmr<Blocking> {
     /// Returns a new blocking GPTMR with given prescaler
-    pub fn new_blocking(_instance: T, psc: Prescaler) -> Self {
+    pub fn new_blocking<T: Instance>(_instance: T, psc: Prescaler) -> Self {
         let gptmr = Self {
-            _instance: PhantomData,
+            reg: T::reg(),
             _mode: PhantomData,
         };
 
@@ -76,62 +76,62 @@ impl<T: Instance> Gptmr<T, Blocking> {
     }
 }
 
-impl<T: Instance> Gptmr<T, Async> {
+impl Gptmr<Async> {
     /// Returns a new async GPTMR with given prescaler
-    pub fn new_async(_instance: T, _psc: Prescaler) -> Self {
+    pub fn new_async<T: Instance>(_instance: T, _psc: Prescaler) -> Self {
         todo!()
     }
 }
 
-impl<T: Instance, M: WaitMode> Gptmr<T, M> {
+impl<M: WaitMode> Gptmr<M> {
     /// Set the GPTMR prescaler
     #[inline(always)]
     pub fn set_prescaler(&self, psc: Prescaler) {
-        T::reg()
+        self.reg
             .ctrl()
             .modify(|_, w| unsafe { w.gptmr_ctrl_prsc().bits(psc.into()) });
     }
 
     /// Returns the GPTMR prescaler
     pub fn prescaler(&self) -> Prescaler {
-        let psc = T::reg().ctrl().read().gptmr_ctrl_prsc().bits();
+        let psc = self.reg.ctrl().read().gptmr_ctrl_prsc().bits();
         psc.into()
     }
 
     /// Enable the GPTMR
     #[inline(always)]
     pub fn enable(&self) {
-        T::reg().ctrl().modify(|_, w| w.gptmr_ctrl_en().set_bit());
+        self.reg.ctrl().modify(|_, w| w.gptmr_ctrl_en().set_bit());
     }
 
     /// Disable the GPTMR
     #[inline(always)]
     pub fn disable(&self) {
-        T::reg().ctrl().modify(|_, w| w.gptmr_ctrl_en().clear_bit());
+        self.reg.ctrl().modify(|_, w| w.gptmr_ctrl_en().clear_bit());
     }
 
     /// Returns true if the GPTMR is enabled
     #[inline(always)]
     pub fn enabled(&self) -> bool {
-        T::reg().ctrl().read().gptmr_ctrl_en().bit_is_set()
+        self.reg.ctrl().read().gptmr_ctrl_en().bit_is_set()
     }
 
     /// Returns true if the GPTMR interrupt is pending
     #[inline(always)]
     pub fn irq_pending(&self) -> bool {
-        T::reg().ctrl().read().gptmr_ctrl_irq_pnd().bit_is_set()
+        self.reg.ctrl().read().gptmr_ctrl_irq_pnd().bit_is_set()
     }
 
     /// Returns the current GPTMR counter (in ticks)
     #[inline(always)]
     pub fn count(&self) -> u32 {
-        T::reg().count().read().bits()
+        self.reg.count().read().bits()
     }
 
     /// Returns the GPTMR threshold (in ticks)
     #[inline(always)]
     pub fn threshold(&self) -> u32 {
-        T::reg().thres().read().bits()
+        self.reg.thres().read().bits()
     }
 
     /// Set the GPTMR threshold (in ticks) before interrupt is triggered
@@ -141,7 +141,7 @@ impl<T: Instance, M: WaitMode> Gptmr<T, M> {
     /// However, interrupt must be acknowleged via [Self::irq_clear]
     #[inline(always)]
     pub fn set_threshold(&self, threshold_ticks: u32) {
-        T::reg()
+        self.reg
             .thres()
             .write(|w| unsafe { w.bits(threshold_ticks) });
     }
@@ -166,10 +166,10 @@ impl<T: Instance, M: WaitMode> Gptmr<T, M> {
     /// This does not take `&self` to allow easy use from interrupt handler
     ///
     /// # Safety
-    /// The caller is responsible for ensuring this does not cause undefined behavior
+    /// The caller is responsible for ensuring this does not cause unexpected behavior
     #[inline(always)]
     pub unsafe fn irq_clear() {
-        T::reg()
+        unsafe { &*pac::Gptmr::ptr() }
             .ctrl()
             .modify(|_, w| w.gptmr_ctrl_irq_clr().set_bit());
     }

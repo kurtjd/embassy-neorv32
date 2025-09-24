@@ -2,16 +2,16 @@
 use core::marker::PhantomData;
 
 /// True Random-Number Generator (TRNG) Driver
-pub struct Trng<T: Instance, M: IoMode> {
-    _instance: PhantomData<T>,
+pub struct Trng<M: IoMode> {
+    reg: &'static pac::trng::RegisterBlock,
     _mode: PhantomData<M>,
 }
 
-impl<T: Instance> Trng<T, Blocking> {
+impl Trng<Blocking> {
     /// Returns a new instance of a blocking TRNG and enables it
-    pub fn new_blocking(_instance: T) -> Self {
+    pub fn new_blocking<T: Instance>(_instance: T) -> Self {
         let trng = Self {
-            _instance: PhantomData,
+            reg: T::reg(),
             _mode: PhantomData,
         };
 
@@ -20,30 +20,30 @@ impl<T: Instance> Trng<T, Blocking> {
     }
 }
 
-impl<T: Instance> Trng<T, Async> {
+impl Trng<Async> {
     /// Returns a new instance of an async TRNG
-    pub fn new_async(_instance: T) -> Self {
+    pub fn new_async<T: Instance>(_instance: T) -> Self {
         todo!()
     }
 }
 
-impl<T: Instance, M: IoMode> Trng<T, M> {
+impl<M: IoMode> Trng<M> {
     /// Enables the TRNG
     #[inline(always)]
     pub fn enable(&self) {
-        T::reg().ctrl().modify(|_, w| w.trng_ctrl_en().set_bit());
+        self.reg.ctrl().modify(|_, w| w.trng_ctrl_en().set_bit());
     }
 
     /// Disables the TRNG, clearing the FIFO
     #[inline(always)]
     pub fn disable(&self) {
-        T::reg().ctrl().modify(|_, w| w.trng_ctrl_en().clear_bit());
+        self.reg.ctrl().modify(|_, w| w.trng_ctrl_en().clear_bit());
     }
 
     /// Flushes/clears the TRNG FIFO
     #[inline(always)]
     pub fn flush(&self) {
-        T::reg()
+        self.reg
             .ctrl()
             .modify(|_, w| w.trng_ctrl_fifo_clr().set_bit());
     }
@@ -51,7 +51,7 @@ impl<T: Instance, M: IoMode> Trng<T, M> {
     /// Returns the TRNG FIFO depth
     #[inline(always)]
     pub fn fifo_depth(&self) -> u8 {
-        T::reg().ctrl().read().trng_ctrl_fifo_size().bits()
+        self.reg.ctrl().read().trng_ctrl_fifo_size().bits()
     }
 
     /// Returns true if TRNG is running in simulation
@@ -59,19 +59,19 @@ impl<T: Instance, M: IoMode> Trng<T, M> {
     /// If so, the output is pseudo-random as opposed to true random
     #[inline(always)]
     pub fn sim_mode(&self) -> bool {
-        T::reg().ctrl().read().trng_ctrl_sim_mode().bit_is_set()
+        self.reg.ctrl().read().trng_ctrl_sim_mode().bit_is_set()
     }
 
     /// Returns true if TRNG data is available
     #[inline(always)]
     pub fn data_available(&self) -> bool {
-        T::reg().ctrl().read().trng_ctrl_avail().bit_is_set()
+        self.reg.ctrl().read().trng_ctrl_avail().bit_is_set()
     }
 
     /// Reads a byte from the TRNG if available, blocking if not
     pub fn blocking_read_byte(&self) -> u8 {
         while !self.data_available() {}
-        T::reg().data().read().trng_data().bits()
+        self.reg.data().read().trng_data().bits()
     }
 
     /// Reads bytes from TRNG FIFO until buffer is full, blocking if empty

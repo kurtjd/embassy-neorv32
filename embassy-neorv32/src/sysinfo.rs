@@ -1,5 +1,4 @@
 //! SysInfo
-use core::marker::PhantomData;
 
 /// Processor boot mode
 pub enum BootMode {
@@ -177,61 +176,59 @@ impl SocConfig {
 }
 
 /// SysInfo Driver
-pub struct SysInfo<T: Instance> {
-    _instance: PhantomData<T>,
+pub struct SysInfo {
+    reg: &'static pac::sysinfo::RegisterBlock,
 }
 
-impl<T: Instance> SysInfo<T> {
+impl SysInfo {
     /// Returns a SysInfo instance
-    pub fn new(_instance: T) -> Self {
-        Self {
-            _instance: PhantomData,
-        }
+    pub fn new<T: Instance>(_instance: T) -> Self {
+        Self { reg: T::reg() }
     }
 
     /// Returns the main CPU clock frequency (Hz)
     #[inline(always)]
     pub fn clock_freq(&self) -> u32 {
-        T::reg().clk().read().bits()
+        self.reg.clk().read().bits()
     }
 
     /// Sets the main CPU clock frequency (Hz)
     #[inline(always)]
     pub fn set_clock_freq(&self, freq_hz: u32) {
-        T::reg().clk().write(|w| unsafe { w.bits(freq_hz) });
+        self.reg.clk().write(|w| unsafe { w.bits(freq_hz) });
     }
 
     /// Returns the IMEM size in bytes
     #[inline(always)]
     pub fn imem_size(&self) -> u32 {
         // Read value is log2, so do inverse log for actual value
-        1 << T::reg().mem().read().sysinfo_misc_imem().bits() as u32
+        1 << self.reg.mem().read().sysinfo_misc_imem().bits() as u32
     }
 
     /// Returns the DMEM size in bytes
     #[inline(always)]
     pub fn dmem_size(&self) -> u32 {
         // Read value is log2, so do inverse log for actual value
-        1 << T::reg().mem().read().sysinfo_misc_dmem().bits() as u32
+        1 << self.reg.mem().read().sysinfo_misc_dmem().bits() as u32
     }
 
     /// Returns the number of harts (cores)
     #[inline(always)]
     pub fn num_harts(&self) -> u8 {
-        T::reg().mem().read().sysinfo_misc_hart().bits()
+        self.reg.mem().read().sysinfo_misc_hart().bits()
     }
 
     /// Returns the boot mode configuration
     #[inline(always)]
     pub fn boot_mode(&self) -> BootMode {
-        let raw = T::reg().mem().read().sysinfo_misc_boot().bits();
+        let raw = self.reg.mem().read().sysinfo_misc_boot().bits();
         BootMode::from(raw)
     }
 
     /// Returns the number of bus timeout cycles
     #[inline(always)]
     pub fn bus_timeout_cycles(&self) -> u8 {
-        T::reg().mem().read().sysinfo_misc_btmo().bits()
+        self.reg.mem().read().sysinfo_misc_btmo().bits()
     }
 
     /// Returns the SoC config
@@ -239,7 +236,7 @@ impl<T: Instance> SysInfo<T> {
     /// Additional methods can be called to check if SoC features are implemented
     #[inline(always)]
     pub fn soc_config(&self) -> SocConfig {
-        SocConfig(T::reg().soc().read().bits())
+        SocConfig(self.reg.soc().read().bits())
     }
 }
 
