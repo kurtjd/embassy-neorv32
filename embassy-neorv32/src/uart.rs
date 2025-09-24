@@ -243,6 +243,8 @@ macro_rules! impl_instance {
     ($periph:ident) => {
         impl crate::Sealed for pac::$periph {}
         impl Instance for pac::$periph {
+            // Note: uart0 and uart1 can both share uart0::RegisterBlock
+            // PAC is able to coerce uart1::ptr() to it with correct base address
             #[inline(always)]
             fn reg() -> &'static pac::uart0::RegisterBlock {
                 unsafe { &*pac::$periph::ptr() }
