@@ -1,4 +1,7 @@
 //! SysInfo
+use crate::peripherals::SYSINFO;
+use core::marker::PhantomData;
+use embassy_hal_internal::{Peri, PeripheralType};
 
 /// Processor boot mode
 pub enum BootMode {
@@ -176,14 +179,18 @@ impl SocConfig {
 }
 
 /// SysInfo Driver
-pub struct SysInfo {
+pub struct SysInfo<'d> {
     reg: &'static pac::sysinfo::RegisterBlock,
+    _phantom: PhantomData<&'d ()>,
 }
 
-impl SysInfo {
+impl<'d> SysInfo<'d> {
     /// Returns a SysInfo instance
-    pub fn new<T: Instance>(_instance: T) -> Self {
-        Self { reg: T::reg() }
+    pub fn new<T: Instance>(_instance: Peri<'d, T>) -> Self {
+        Self {
+            reg: T::reg(),
+            _phantom: PhantomData,
+        }
     }
 
     /// Returns the main CPU clock frequency (Hz)
@@ -242,12 +249,12 @@ impl SysInfo {
 
 /// A valid SysInfo peripheral
 #[allow(private_bounds)]
-pub trait Instance: crate::Sealed {
+pub trait Instance: crate::Sealed + PeripheralType {
     fn reg() -> &'static pac::sysinfo::RegisterBlock;
 }
 
-impl crate::Sealed for pac::Sysinfo {}
-impl Instance for pac::Sysinfo {
+impl crate::Sealed for SYSINFO {}
+impl Instance for SYSINFO {
     fn reg() -> &'static pac::sysinfo::RegisterBlock {
         unsafe { &*pac::Sysinfo::ptr() }
     }

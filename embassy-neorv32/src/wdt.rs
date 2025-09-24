@@ -1,5 +1,7 @@
 //! Watchdog Timer (WDT)
+use crate::peripherals::WDT;
 use core::marker::PhantomData;
+use embassy_hal_internal::{Peri, PeripheralType};
 
 /// Cause of last hardware reset
 pub enum ResetCause {
@@ -40,19 +42,19 @@ impl From<u8> for ResetCause {
     }
 }
 
-pub struct Wdt<M: LockMode> {
+pub struct Wdt<'d, M: LockMode> {
     reg: &'static pac::wdt::RegisterBlock,
-    _mode: PhantomData<M>,
+    _phantom: PhantomData<(&'d (), M)>,
 }
 
-impl Wdt<Unlocked> {
+impl<'d> Wdt<'d, Unlocked> {
     /// Returns a new unlocked WDT with timeout set to 24-bit max
     ///
     /// Caller should configure timeout and then enable the WDT
-    pub fn new<T: Instance>(_instance: T) -> Self {
+    pub fn new<T: Instance>(_instance: Peri<'d, T>) -> Self {
         let wdt = Self {
             reg: T::reg(),
-            _mode: PhantomData,
+            _phantom: PhantomData,
         };
 
         // Set timeout to max so WDT does not immediately reset if user calls `enable` before `set_timeout`
@@ -103,16 +105,16 @@ impl Wdt<Unlocked> {
     ///
     /// The only way to unlock the WDT is via system reset
     #[must_use]
-    pub fn lock(self) -> Wdt<Locked> {
+    pub fn lock(self) -> Wdt<'d, Locked> {
         self.reg.ctrl().modify(|_, w| w.wdt_ctrl_lock().set_bit());
         Wdt {
             reg: self.reg,
-            _mode: PhantomData,
+            _phantom: PhantomData,
         }
     }
 }
 
-impl<M: LockMode> Wdt<M> {
+impl<'d, M: LockMode> Wdt<'d, M> {
     /// Resets WDT timeout counter
     pub fn feed(&self) {
         const PASSWORD: u32 = 0x709D1AB3;
@@ -160,12 +162,12 @@ impl LockMode for Locked {}
 
 /// A valid WDT peripheral
 #[allow(private_bounds)]
-pub trait Instance: crate::Sealed {
+pub trait Instance: crate::Sealed + PeripheralType {
     fn reg() -> &'static pac::wdt::RegisterBlock;
 }
 
-impl crate::Sealed for pac::Wdt {}
-impl Instance for pac::Wdt {
+impl crate::Sealed for WDT {}
+impl Instance for WDT {
     fn reg() -> &'static pac::wdt::RegisterBlock {
         unsafe { &*pac::Wdt::ptr() }
     }

@@ -9,7 +9,7 @@ async fn main(_spawner: embassy_executor::Spawner) {
     let p = embassy_neorv32::init();
 
     // Setup UART in simulation mode with no HW flow control and a very high baud rate (since sim is slow)
-    let uart = Uart::new_blocking(p.uart0, 50_000_000, true, false);
+    let uart = Uart::new_blocking(p.UART0, 50_000_000, true, false);
 
     loop {
         // Note: '\n' seems necessary for UART writes for sim to flush output

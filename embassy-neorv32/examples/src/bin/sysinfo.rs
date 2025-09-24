@@ -10,10 +10,10 @@ async fn main(_spawner: embassy_executor::Spawner) {
     let p = embassy_neorv32::init();
 
     // Setup UART for display purposes
-    let mut uart = Uart::new_blocking(p.uart0, 50_000_000, true, false);
+    let mut uart = Uart::new_blocking(p.UART0, 50_000_000, true, false);
 
     // Setup SysInfo
-    let sysinfo = SysInfo::new(p.sysinfo);
+    let sysinfo = SysInfo::new(p.SYSINFO);
 
     // Print clock frequency
     writeln!(

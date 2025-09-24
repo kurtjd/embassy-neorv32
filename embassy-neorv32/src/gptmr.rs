@@ -1,5 +1,7 @@
 //! General Purpose Timer (GPTMR)
+use crate::peripherals::GPTMR;
 use core::marker::PhantomData;
+use embassy_hal_internal::{Peri, PeripheralType};
 
 /// GPTMR Prescaler
 pub enum Prescaler {
@@ -58,17 +60,17 @@ impl From<u8> for Prescaler {
 }
 
 /// General Purpose Timer (GPTMR) Driver
-pub struct Gptmr<M: WaitMode> {
+pub struct Gptmr<'d, M: WaitMode> {
     reg: &'static pac::gptmr::RegisterBlock,
-    _mode: PhantomData<M>,
+    _phantom: PhantomData<(&'d (), M)>,
 }
 
-impl Gptmr<Blocking> {
+impl<'d> Gptmr<'d, Blocking> {
     /// Returns a new blocking GPTMR with given prescaler
-    pub fn new_blocking<T: Instance>(_instance: T, psc: Prescaler) -> Self {
+    pub fn new_blocking<T: Instance>(_instance: Peri<'d, T>, psc: Prescaler) -> Self {
         let gptmr = Self {
             reg: T::reg(),
-            _mode: PhantomData,
+            _phantom: PhantomData,
         };
 
         gptmr.set_prescaler(psc);
@@ -76,14 +78,14 @@ impl Gptmr<Blocking> {
     }
 }
 
-impl Gptmr<Async> {
+impl<'d> Gptmr<'d, Async> {
     /// Returns a new async GPTMR with given prescaler
-    pub fn new_async<T: Instance>(_instance: T, _psc: Prescaler) -> Self {
+    pub fn new_async<T: Instance>(_instance: Peri<'d, T>, _psc: Prescaler) -> Self {
         todo!()
     }
 }
 
-impl<M: WaitMode> Gptmr<M> {
+impl<'d, M: WaitMode> Gptmr<'d, M> {
     /// Set the GPTMR prescaler
     #[inline(always)]
     pub fn set_prescaler(&self, psc: Prescaler) {
@@ -192,12 +194,12 @@ impl WaitMode for Async {}
 
 /// A valid GPTMR peripheral
 #[allow(private_bounds)]
-pub trait Instance: crate::Sealed {
+pub trait Instance: crate::Sealed + PeripheralType {
     fn reg() -> &'static pac::gptmr::RegisterBlock;
 }
 
-impl crate::Sealed for pac::Gptmr {}
-impl Instance for pac::Gptmr {
+impl crate::Sealed for GPTMR {}
+impl Instance for GPTMR {
     fn reg() -> &'static pac::gptmr::RegisterBlock {
         unsafe { &*pac::Gptmr::ptr() }
     }

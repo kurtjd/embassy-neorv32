@@ -1,25 +1,27 @@
 //! UART
+use crate::peripherals::{UART0, UART1};
 use core::marker::PhantomData;
+use embassy_hal_internal::{Peri, PeripheralType};
 
 /// UART driver capable of Rx and Tx
-pub struct Uart<M: IoMode> {
+pub struct Uart<'d, M: IoMode> {
     reg: &'static pac::uart0::RegisterBlock,
-    _mode: PhantomData<M>,
+    _phantom: PhantomData<(&'d (), M)>,
 }
 
-impl Uart<Blocking> {
+impl<'d> Uart<'d, Blocking> {
     /// Creates a new blocking UART driver with given baud rate
     ///
     /// Enables simulation mode if `sim` is true and hardware flow control if `flow_control` is true
     pub fn new_blocking<T: Instance>(
-        _instance: T,
+        _instance: Peri<'d, T>,
         baud_rate: u32,
         sim: bool,
         flow_control: bool,
     ) -> Self {
         let uart = Self {
             reg: T::reg(),
-            _mode: PhantomData,
+            _phantom: PhantomData,
         };
 
         uart.reset();
@@ -94,7 +96,7 @@ impl Uart<Blocking> {
     }
 }
 
-impl Uart<Async> {
+impl<'d> Uart<'d, Async> {
     /// Creates a new async UART driver with given baud rate
     ///
     /// Enables simulation mode if `sim` is true and hardware flow control if `flow_control` is true
@@ -108,7 +110,7 @@ impl Uart<Async> {
     }
 }
 
-impl<M: IoMode> Uart<M> {
+impl<'d, M: IoMode> Uart<'d, M> {
     #[inline(always)]
     fn enable(&self) {
         self.reg.ctrl().modify(|_, w| w.uart_ctrl_en().set_bit());
@@ -211,7 +213,7 @@ impl<M: IoMode> Uart<M> {
 // Convenience for writing formatted strings to UART
 // TODO: Other Embassy HALs don't seem to do this so look at other approaches
 // Don't like how it requires an &mut
-impl<M: IoMode> core::fmt::Write for Uart<M> {
+impl<'d, M: IoMode> core::fmt::Write for Uart<'d, M> {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
         self.blocking_write(s.as_bytes());
         Ok(())
@@ -235,23 +237,23 @@ impl IoMode for Async {}
 
 /// A valid UART peripheral
 #[allow(private_bounds)]
-pub trait Instance: crate::Sealed {
+pub trait Instance: crate::Sealed + PeripheralType {
     fn reg() -> &'static pac::uart0::RegisterBlock;
 }
 
 macro_rules! impl_instance {
-    ($periph:ident) => {
-        impl crate::Sealed for pac::$periph {}
-        impl Instance for pac::$periph {
+    ($periph:ident, $rb:ident) => {
+        impl crate::Sealed for $periph {}
+        impl Instance for $periph {
             // Note: uart0 and uart1 can both share uart0::RegisterBlock
             // PAC is able to coerce uart1::ptr() to it with correct base address
             #[inline(always)]
             fn reg() -> &'static pac::uart0::RegisterBlock {
-                unsafe { &*pac::$periph::ptr() }
+                unsafe { &*pac::$rb::ptr() }
             }
         }
     };
 }
 
-impl_instance!(Uart0);
-impl_instance!(Uart1);
+impl_instance!(UART0, Uart0);
+impl_instance!(UART1, Uart1);

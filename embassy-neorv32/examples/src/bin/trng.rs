@@ -11,10 +11,10 @@ async fn main(_spawner: embassy_executor::Spawner) {
     let p = embassy_neorv32::init();
 
     // Setup UART for display purposes
-    let mut uart = Uart::new_blocking(p.uart0, 50_000_000, true, false);
+    let mut uart = Uart::new_blocking(p.UART0, 50_000_000, true, false);
 
     // Setup TRNG
-    let trng = Trng::new_blocking(p.trng);
+    let trng = Trng::new_blocking(p.TRNG);
     if trng.sim_mode() {
         uart.blocking_write(b"Running in simulation so PRNG is used\n");
     }

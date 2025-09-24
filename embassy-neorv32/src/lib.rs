@@ -1,4 +1,5 @@
 #![no_std]
+mod chip;
 pub mod gptmr;
 pub mod sysinfo;
 mod time_driver;
@@ -6,15 +7,15 @@ pub mod trng;
 pub mod uart;
 pub mod wdt;
 
-pub use pac;
+pub use chip::{Peripherals, peripherals};
 
 // TODO: Get main clock freq either statically via config or runtime via SysInfo
 // TODO: This will likely need to only be runtime determined since SysInfo allows dynamic changing of freq
 // TODO: That could make time-driver problematic which needs static freq... need to look into
 const CPU_CLK_FREQ: u32 = 100_000_000;
 
-pub fn init() -> pac::Peripherals {
-    let p = pac::Peripherals::take().expect("Perhipherals must not already be taken");
+pub fn init() -> Peripherals {
+    let p = Peripherals::take();
 
     // SAFETY: This can only be called once and before any CS
     unsafe {

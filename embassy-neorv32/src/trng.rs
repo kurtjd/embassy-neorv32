@@ -1,18 +1,20 @@
 //! True Random-Number Generator (TRNG)
+use crate::peripherals::TRNG;
 use core::marker::PhantomData;
+use embassy_hal_internal::{Peri, PeripheralType};
 
 /// True Random-Number Generator (TRNG) Driver
-pub struct Trng<M: IoMode> {
+pub struct Trng<'d, M: IoMode> {
     reg: &'static pac::trng::RegisterBlock,
-    _mode: PhantomData<M>,
+    _phantom: PhantomData<(&'d (), M)>,
 }
 
-impl Trng<Blocking> {
+impl<'d> Trng<'d, Blocking> {
     /// Returns a new instance of a blocking TRNG and enables it
-    pub fn new_blocking<T: Instance>(_instance: T) -> Self {
+    pub fn new_blocking<T: Instance>(_instance: Peri<'d, T>) -> Self {
         let trng = Self {
             reg: T::reg(),
-            _mode: PhantomData,
+            _phantom: PhantomData,
         };
 
         trng.enable();
@@ -20,14 +22,14 @@ impl Trng<Blocking> {
     }
 }
 
-impl Trng<Async> {
+impl<'d> Trng<'d, Async> {
     /// Returns a new instance of an async TRNG
-    pub fn new_async<T: Instance>(_instance: T) -> Self {
+    pub fn new_async<T: Instance>(_instance: Peri<'d, T>) -> Self {
         todo!()
     }
 }
 
-impl<M: IoMode> Trng<M> {
+impl<'d, M: IoMode> Trng<'d, M> {
     /// Enables the TRNG
     #[inline(always)]
     pub fn enable(&self) {
@@ -99,12 +101,12 @@ impl IoMode for Async {}
 
 /// A valid TRNG peripheral
 #[allow(private_bounds)]
-pub trait Instance: crate::Sealed {
+pub trait Instance: crate::Sealed + PeripheralType {
     fn reg() -> &'static pac::trng::RegisterBlock;
 }
 
-impl crate::Sealed for pac::Trng {}
-impl Instance for pac::Trng {
+impl crate::Sealed for TRNG {}
+impl Instance for TRNG {
     fn reg() -> &'static pac::trng::RegisterBlock {
         unsafe { &*pac::Trng::ptr() }
     }

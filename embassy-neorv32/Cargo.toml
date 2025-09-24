@@ -6,9 +6,14 @@ authors = ["Kurtis Dinelle <kurtis.dinelle@gmail.com>"]
 license = "MIT"
 repository = "https://github.com/kurtjd/embassy-neorv32"
 
+[features]
+defmt = ["dep:defmt"]
+
 [dependencies]
 critical-section = "1.2.0"
+defmt = { version = "1.0.1", optional = true }
 embassy-futures = "0.1.2"
+embassy-hal-internal = "0.3.0"
 embassy-sync = "0.7.2"
 # Note: CLINT MTIMER always runs at CPU freq, thus this needs to match CPU FREQ
 # So maybe just don't put feature here and force user to include it in bin?
