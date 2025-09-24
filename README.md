@@ -16,7 +16,7 @@ Planning to investigate support for a "max" configuration in the future.
 - SysInfo
 - WDT
 - Blocking UART
-- Blocking TRNG
+- Blocking and Async TRNG
 - Blocking GPTMR
 
 ## TODO

@@ -1,7 +1,22 @@
 //! True Random-Number Generator (TRNG)
 use crate::peripherals::TRNG;
+use core::future::poll_fn;
 use core::marker::PhantomData;
+use core::task::Poll;
 use embassy_hal_internal::{Peri, PeripheralType};
+use embassy_sync::waitqueue::AtomicWaker;
+
+static TRNG_WAKER: AtomicWaker = AtomicWaker::new();
+
+// TODO: Come up with strategy to bind interrupt similar to Embassy's internal cortex-m interrupt hal
+#[riscv_rt::core_interrupt(pac::interrupt::CoreInterrupt::TRNG)]
+fn trng_handler() {
+    // There doesn't appear to be any other way to ack the interrupt for TRNG
+    // other than reading from the FIFO (which we don't want to do here)
+    // or just disabling it
+    riscv::interrupt::disable_interrupt(pac::interrupt::CoreInterrupt::TRNG);
+    TRNG_WAKER.wake();
+}
 
 /// True Random-Number Generator (TRNG) Driver
 pub struct Trng<'d, M: IoMode> {
@@ -12,6 +27,41 @@ pub struct Trng<'d, M: IoMode> {
 impl<'d> Trng<'d, Blocking> {
     /// Returns a new instance of a blocking TRNG and enables it
     pub fn new_blocking<T: Instance>(_instance: Peri<'d, T>) -> Self {
+        Self::new_inner(_instance)
+    }
+}
+
+impl<'d> Trng<'d, Async> {
+    /// Returns a new instance of an async TRNG and enables it
+    pub fn new_async<T: Instance>(_instance: Peri<'d, T>) -> Self {
+        Self::new_inner(_instance)
+    }
+
+    /// Reads a byte from the TRNG
+    pub async fn read_byte(&self) -> u8 {
+        poll_fn(|cx| {
+            if self.data_available() {
+                Poll::Ready(self.blocking_read_byte())
+            } else {
+                // Need to always re-enable interrupt before going to sleep
+                unsafe { riscv::interrupt::enable_interrupt(pac::interrupt::CoreInterrupt::TRNG) };
+                TRNG_WAKER.register(cx.waker());
+                Poll::Pending
+            }
+        })
+        .await
+    }
+
+    /// Reads bytes from TRNG FIFO until buffer is full
+    pub async fn read(&self, buf: &mut [u8]) {
+        for byte in buf {
+            *byte = self.read_byte().await;
+        }
+    }
+}
+
+impl<'d, M: IoMode> Trng<'d, M> {
+    fn new_inner<T: Instance>(_instance: Peri<'d, T>) -> Self {
         let trng = Self {
             reg: T::reg(),
             _phantom: PhantomData,
@@ -20,16 +70,7 @@ impl<'d> Trng<'d, Blocking> {
         trng.enable();
         trng
     }
-}
 
-impl<'d> Trng<'d, Async> {
-    /// Returns a new instance of an async TRNG
-    pub fn new_async<T: Instance>(_instance: Peri<'d, T>) -> Self {
-        todo!()
-    }
-}
-
-impl<'d, M: IoMode> Trng<'d, M> {
     /// Enables the TRNG
     #[inline(always)]
     pub fn enable(&self) {
