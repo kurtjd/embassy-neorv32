@@ -191,16 +191,20 @@ impl<'d, M: IoMode> Uart<'d, M> {
 
     /// Returns depth of the RX FIFO
     #[inline(always)]
-    pub fn rx_fifo_depth(&self) -> u8 {
+    pub fn rx_fifo_depth(&self) -> u32 {
         // TODO: Patch SVD to make this a field
-        (self.reg.data().read().bits() >> 8) as u8 & 0b1111
+        // Read value is log2, so do inverse log for actual value
+        let raw = (self.reg.data().read().bits() >> 8) as u8 & 0b1111;
+        1 << raw as u32
     }
 
     /// Returns depth of the TX FIFO
     #[inline(always)]
-    pub fn tx_fifo_depth(&self) -> u8 {
+    pub fn tx_fifo_depth(&self) -> u32 {
         // TODO: Patch SVD to make this a field
-        (self.reg.data().read().bits() >> 12) as u8 & 0b1111
+        // Read value is log2, so do inverse log for actual value
+        let raw = (self.reg.data().read().bits() >> 12) as u8 & 0b1111;
+        1 << raw as u32
     }
 
     /// Blocks until all TX complete

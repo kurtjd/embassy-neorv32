@@ -1,5 +1,6 @@
 #![no_std]
 #![no_main]
+use core::fmt::Write;
 use embassy_neorv32::uart::Uart;
 use embassy_time::Timer;
 use panic_halt as _;
@@ -9,7 +10,11 @@ async fn main(_spawner: embassy_executor::Spawner) {
     let p = embassy_neorv32::init();
 
     // Setup UART in simulation mode with no HW flow control and a very high baud rate (since sim is slow)
-    let uart = Uart::new_blocking(p.UART0, 50_000_000, true, false);
+    let mut uart = Uart::new_blocking(p.UART0, 50_000_000, true, false);
+    let rx_fifo_depth = uart.rx_fifo_depth();
+    let tx_fifo_depth = uart.tx_fifo_depth();
+    writeln!(&mut uart, "UART RX FIFO Depth: {rx_fifo_depth}").unwrap();
+    writeln!(&mut uart, "UART TX FIFO Depth: {tx_fifo_depth}").unwrap();
 
     loop {
         // Note: '\n' seems necessary for UART writes for sim to flush output

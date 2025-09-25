@@ -93,8 +93,9 @@ impl<'d, M: IoMode> Trng<'d, M> {
 
     /// Returns the TRNG FIFO depth
     #[inline(always)]
-    pub fn fifo_depth(&self) -> u8 {
-        self.reg.ctrl().read().trng_ctrl_fifo_size().bits()
+    pub fn fifo_depth(&self) -> u32 {
+        // Read value is log2, so do inverse log for actual value
+        1 << self.reg.ctrl().read().trng_ctrl_fifo_size().bits() as u32
     }
 
     /// Returns true if TRNG is running in simulation
