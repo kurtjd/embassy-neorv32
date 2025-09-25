@@ -221,7 +221,6 @@ pub struct Blocking;
 impl crate::Sealed for Blocking {}
 impl WaitMode for Blocking {}
 
-// TODO: Actually add async support
 /// Async TRNG
 pub struct Async;
 impl crate::Sealed for Async {}
