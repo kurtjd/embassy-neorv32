@@ -1,5 +1,6 @@
 #![no_std]
 mod chip;
+pub mod dma;
 pub mod gptmr;
 pub mod sysinfo;
 mod time_driver;

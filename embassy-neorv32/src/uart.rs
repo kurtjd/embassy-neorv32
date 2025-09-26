@@ -9,6 +9,9 @@ pub struct Uart<'d, M: IoMode> {
     _phantom: PhantomData<(&'d (), M)>,
 }
 
+// TODO: Consider soundness of this
+unsafe impl<'d, M: IoMode> Send for Uart<'d, M> {}
+
 impl<'d> Uart<'d, Blocking> {
     /// Creates a new blocking UART driver with given baud rate
     ///
@@ -111,6 +114,13 @@ impl<'d> Uart<'d, Async> {
 }
 
 impl<'d, M: IoMode> Uart<'d, M> {
+    // TODO: Temporary just for easy debugging
+    pub fn debug_print(str: &'static str) {
+        let uart = unsafe { crate::Peripherals::steal() }.UART0;
+        let uart = Uart::new_blocking(uart, 50_000_000, true, false);
+        uart.blocking_write(str.as_bytes());
+    }
+
     #[inline(always)]
     fn enable(&self) {
         self.reg.ctrl().modify(|_, w| w.uart_ctrl_en().set_bit());
