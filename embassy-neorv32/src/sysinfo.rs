@@ -180,7 +180,7 @@ impl SocConfig {
 
 /// SysInfo Driver
 pub struct SysInfo<'d> {
-    reg: &'static pac::sysinfo::RegisterBlock,
+    reg: &'static crate::pac::sysinfo::RegisterBlock,
     _phantom: PhantomData<&'d ()>,
 }
 
@@ -250,12 +250,12 @@ impl<'d> SysInfo<'d> {
 /// A valid SysInfo peripheral
 #[allow(private_bounds)]
 pub trait Instance: crate::Sealed + PeripheralType {
-    fn reg() -> &'static pac::sysinfo::RegisterBlock;
+    fn reg() -> &'static crate::pac::sysinfo::RegisterBlock;
 }
 
 impl crate::Sealed for SYSINFO {}
 impl Instance for SYSINFO {
-    fn reg() -> &'static pac::sysinfo::RegisterBlock {
-        unsafe { &*pac::Sysinfo::ptr() }
+    fn reg() -> &'static crate::pac::sysinfo::RegisterBlock {
+        unsafe { &*crate::pac::Sysinfo::ptr() }
     }
 }

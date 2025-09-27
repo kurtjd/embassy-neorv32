@@ -1,5 +1,6 @@
 // TODO: Really rough draft, definitely needs revisiting (and doc strings)
 //! Direct Memory Access (DMA)
+use crate::interrupt::typelevel::{Binding, Handler, Interrupt};
 use crate::peripherals::DMA;
 use core::future::poll_fn;
 use core::marker::PhantomData;
@@ -8,17 +9,21 @@ use core::sync::atomic::fence;
 use core::task::Poll;
 use embassy_hal_internal::{Peri, PeripheralType};
 use embassy_sync::waitqueue::AtomicWaker;
-use pac::interrupt::CoreInterrupt;
 
 static DMA_WAKER: AtomicWaker = AtomicWaker::new();
 
-#[riscv_rt::core_interrupt(CoreInterrupt::DMA)]
-fn dma_handler() {
-    // If we ack IRQ here, that clears DONE bit and no way to check in waker
-    // So instead disable to prevent storm and ACK and re-enable in waker
-    // Could use atomic flag? Not sure what the best approach is...
-    riscv::interrupt::disable_interrupt(CoreInterrupt::DMA);
-    DMA_WAKER.wake();
+pub struct InterruptHandler<T: Instance> {
+    _phantom: PhantomData<T>,
+}
+
+impl<T: Instance> Handler<T::Interrupt> for InterruptHandler<T> {
+    unsafe fn on_interrupt() {
+        // If we ack IRQ here, that clears DONE bit and no way to check in waker
+        // So instead disable to prevent storm and ACK and re-enable in waker
+        // Could use atomic flag? Not sure what the best approach is...
+        T::Interrupt::disable();
+        DMA_WAKER.wake();
+    }
 }
 
 pub enum Error {
@@ -82,21 +87,23 @@ pub enum Descriptor {
 }
 
 /// Direct Memory Access (DMA) Driver
-pub struct Dma<'d, M: IoMode> {
-    reg: &'static pac::dma::RegisterBlock,
-    _phantom: PhantomData<(&'d (), M)>,
+pub struct Dma<'d, T: Instance, M: IoMode> {
+    _phantom: PhantomData<&'d (T, M)>,
 }
 
-impl<'d> Dma<'d, Blocking> {
+impl<'d, T: Instance> Dma<'d, T, Blocking> {
     /// Returns a new instance of a blocking DMA and enables it
-    pub fn new_blocking<T: Instance>(_instance: Peri<'d, T>) -> Self {
+    pub fn new_blocking(_instance: Peri<'d, T>) -> Self {
         Self::new_inner(_instance)
     }
 }
 
-impl<'d> Dma<'d, Async> {
+impl<'d, T: Instance> Dma<'d, T, Async> {
     /// Returns a new instance of an async DMA and enables it
-    pub fn new_async<T: Instance>(_instance: Peri<'d, T>) -> Self {
+    pub fn new_async(
+        _instance: Peri<'d, T>,
+        _irq: impl Binding<T::Interrupt, InterruptHandler<T>> + 'd,
+    ) -> Self {
         Self::new_inner(_instance)
     }
 
@@ -114,7 +121,7 @@ impl<'d> Dma<'d, Async> {
                 Poll::Ready(Err(Error::BusError))
             } else {
                 unsafe {
-                    riscv::interrupt::enable_interrupt(CoreInterrupt::DMA);
+                    T::Interrupt::enable();
                 }
                 Poll::Pending
             };
@@ -132,10 +139,9 @@ impl<'d> Dma<'d, Async> {
     }
 }
 
-impl<'d, M: IoMode> Dma<'d, M> {
-    fn new_inner<T: Instance>(_instance: Peri<'d, T>) -> Self {
+impl<'d, T: Instance, M: IoMode> Dma<'d, T, M> {
+    fn new_inner(_instance: Peri<'d, T>) -> Self {
         let dma = Self {
-            reg: T::reg(),
             _phantom: PhantomData,
         };
 
@@ -144,39 +150,39 @@ impl<'d, M: IoMode> Dma<'d, M> {
     }
 
     pub fn enable(&self) {
-        self.reg.ctrl().modify(|_, w| w.dma_ctrl_en().set_bit());
+        T::reg().ctrl().modify(|_, w| w.dma_ctrl_en().set_bit());
     }
 
     pub fn disable(&self) {
-        self.reg.ctrl().modify(|_, w| w.dma_ctrl_en().clear_bit());
+        T::reg().ctrl().modify(|_, w| w.dma_ctrl_en().clear_bit());
     }
 
     pub fn enabled(&self) -> bool {
-        self.reg.ctrl().read().dma_ctrl_en().bit_is_set()
+        T::reg().ctrl().read().dma_ctrl_en().bit_is_set()
     }
 
     pub fn start(&self) {
-        self.reg.ctrl().modify(|_, w| w.dma_ctrl_start().set_bit());
+        T::reg().ctrl().modify(|_, w| w.dma_ctrl_start().set_bit());
     }
 
     pub fn fifo_empty(&self) -> bool {
-        self.reg.ctrl().read().dma_ctrl_dempty().bit_is_set()
+        T::reg().ctrl().read().dma_ctrl_dempty().bit_is_set()
     }
 
     pub fn fifo_full(&self) -> bool {
-        self.reg.ctrl().read().dma_ctrl_dfull().bit_is_set()
+        T::reg().ctrl().read().dma_ctrl_dfull().bit_is_set()
     }
 
     pub fn bus_error(&self) -> bool {
-        self.reg.ctrl().read().dma_ctrl_error().bit_is_set()
+        T::reg().ctrl().read().dma_ctrl_error().bit_is_set()
     }
 
     pub fn transfer_complete(&self) -> bool {
-        self.reg.ctrl().read().dma_ctrl_done().bit_is_set()
+        T::reg().ctrl().read().dma_ctrl_done().bit_is_set()
     }
 
     pub fn busy(&self) -> bool {
-        self.reg.ctrl().read().dma_ctrl_busy().bit_is_set()
+        T::reg().ctrl().read().dma_ctrl_busy().bit_is_set()
     }
 
     pub fn write_descriptor(&self, desc: Descriptor) {
@@ -184,7 +190,7 @@ impl<'d, M: IoMode> Dma<'d, M> {
             Descriptor::BaseAddress(addr) => addr,
             Descriptor::Config(config) => config.into(),
         };
-        self.reg.desc().write(|w| unsafe { w.bits(raw) });
+        T::reg().desc().write(|w| unsafe { w.bits(raw) });
     }
 
     pub fn start_transfer_raw(&self, src_addr: u32, dst_addr: u32, config: TransferConfig) {
@@ -192,7 +198,7 @@ impl<'d, M: IoMode> Dma<'d, M> {
         self.write_descriptor(Descriptor::BaseAddress(dst_addr));
         self.write_descriptor(Descriptor::Config(config));
 
-        self.reg.ctrl().modify(|_, w| w.dma_ctrl_start().set_bit());
+        T::reg().ctrl().modify(|_, w| w.dma_ctrl_start().set_bit());
     }
 
     pub fn start_transfer(&self, src_addr: *const u8, dst_addr: *mut u8, len: u32) {
@@ -229,8 +235,7 @@ impl<'d, M: IoMode> Dma<'d, M> {
     }
 
     pub unsafe fn irq_ack() {
-        let reg = unsafe { &*pac::Dma::ptr() };
-        reg.ctrl().modify(|_, w| w.dma_ctrl_ack().set_bit());
+        T::reg().ctrl().modify(|_, w| w.dma_ctrl_ack().set_bit());
     }
 }
 
@@ -251,12 +256,14 @@ impl IoMode for Async {}
 /// A valid DMA peripheral
 #[allow(private_bounds)]
 pub trait Instance: crate::Sealed + PeripheralType {
-    fn reg() -> &'static pac::dma::RegisterBlock;
+    type Interrupt: Interrupt;
+    fn reg() -> &'static crate::pac::dma::RegisterBlock;
 }
 
 impl crate::Sealed for DMA {}
 impl Instance for DMA {
-    fn reg() -> &'static pac::dma::RegisterBlock {
-        unsafe { &*pac::Dma::ptr() }
+    type Interrupt = crate::interrupt::typelevel::DMA;
+    fn reg() -> &'static crate::pac::dma::RegisterBlock {
+        unsafe { &*crate::pac::Dma::ptr() }
     }
 }

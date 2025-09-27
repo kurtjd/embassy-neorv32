@@ -10,14 +10,14 @@ embassy_time_driver::time_driver_impl!(static DRIVER: MtimerDriver = MtimerDrive
     queue: Mutex::new(RefCell::new(Queue::new()))
 });
 
-#[riscv_rt::core_interrupt(pac::interrupt::CoreInterrupt::MachineTimer)]
+#[riscv_rt::core_interrupt(crate::pac::interrupt::CoreInterrupt::MachineTimer)]
 fn machine_timer_handler() {
     DRIVER.on_interrupt()
 }
 
-fn clint() -> pac::Clint {
+fn clint() -> crate::pac::Clint {
     // SAFETY: TODO
-    unsafe { pac::Clint::steal() }
+    unsafe { crate::pac::Clint::steal() }
 }
 
 struct MtimerDriver {
@@ -27,7 +27,7 @@ struct MtimerDriver {
 impl MtimerDriver {
     fn on_interrupt(&self) {
         // Disable the mtimer interrupt
-        riscv::interrupt::disable_interrupt(pac::interrupt::CoreInterrupt::MachineTimer);
+        riscv::interrupt::disable_interrupt(crate::pac::interrupt::CoreInterrupt::MachineTimer);
 
         critical_section::with(|cs| {
             let mut queue = self.queue.borrow(cs).borrow_mut();
@@ -55,7 +55,9 @@ impl MtimerDriver {
         } else {
             // SAFETY: TODO
             unsafe {
-                riscv::interrupt::enable_interrupt(pac::interrupt::CoreInterrupt::MachineTimer);
+                riscv::interrupt::enable_interrupt(
+                    crate::pac::interrupt::CoreInterrupt::MachineTimer,
+                );
             }
             true
         }

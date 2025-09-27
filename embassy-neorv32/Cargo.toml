@@ -19,10 +19,7 @@ embassy-sync = "0.7.2"
 # So maybe just don't put feature here and force user to include it in bin?
 embassy-time-driver = { version = "0.2.1", features = ["tick-hz-100_000_000"] }
 embassy-time-queue-utils = "0.3.0"
-pac = { package = "neorv32-pac", path = "../neorv32-pac", features = [
-    "rt",
-    "critical-section",
-] }
+neorv32-pac = { path = "../neorv32-pac", features = ["rt", "critical-section"] }
 # TODO: Don't use this if target has A extension
 portable-atomic = { version = "1.11.1", default-features = false, features = [
     "unsafe-assume-single-core",

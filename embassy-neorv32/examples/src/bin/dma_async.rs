@@ -1,7 +1,9 @@
 #![no_std]
 #![no_main]
 
+use embassy_neorv32::bind_interrupts;
 use embassy_neorv32::dma::{self, Dma};
+use embassy_neorv32::peripherals;
 use embassy_neorv32::uart::{self, Uart};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
@@ -9,11 +11,15 @@ use embassy_sync::once_lock::OnceLock;
 use embassy_time::Timer;
 use panic_halt as _;
 
+bind_interrupts!(struct Irqs {
+    DMA => dma::InterruptHandler<peripherals::DMA>;
+});
+
 type UartMutex = Mutex<CriticalSectionRawMutex, Uart<'static, uart::Blocking>>;
 static UART: OnceLock<UartMutex> = OnceLock::new();
 
 #[embassy_executor::task]
-async fn dma_transfer(dma: Dma<'static, dma::Async>, uart: &'static UartMutex) {
+async fn dma_transfer(dma: Dma<'static, peripherals::DMA, dma::Async>, uart: &'static UartMutex) {
     loop {
         let src = [42; 2048];
         let mut dst = [69; 2048];
@@ -39,7 +45,7 @@ async fn main(spawner: embassy_executor::Spawner) {
     let uart = UART.get_or_init(|| Mutex::new(uart));
 
     // Setup DMA
-    let dma = Dma::new_async(p.DMA);
+    let dma = Dma::new_async(p.DMA, Irqs);
     spawner.must_spawn(dma_transfer(dma, uart));
 
     loop {

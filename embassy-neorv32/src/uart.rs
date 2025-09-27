@@ -5,7 +5,7 @@ use embassy_hal_internal::{Peri, PeripheralType};
 
 /// UART driver capable of Rx and Tx
 pub struct Uart<'d, M: IoMode> {
-    reg: &'static pac::uart0::RegisterBlock,
+    reg: &'static crate::pac::uart0::RegisterBlock,
     _phantom: PhantomData<(&'d (), M)>,
 }
 
@@ -252,7 +252,7 @@ impl IoMode for Async {}
 /// A valid UART peripheral
 #[allow(private_bounds)]
 pub trait Instance: crate::Sealed + PeripheralType {
-    fn reg() -> &'static pac::uart0::RegisterBlock;
+    fn reg() -> &'static crate::pac::uart0::RegisterBlock;
 }
 
 macro_rules! impl_instance {
@@ -262,8 +262,8 @@ macro_rules! impl_instance {
             // Note: uart0 and uart1 can both share uart0::RegisterBlock
             // PAC is able to coerce uart1::ptr() to it with correct base address
             #[inline(always)]
-            fn reg() -> &'static pac::uart0::RegisterBlock {
-                unsafe { &*pac::$rb::ptr() }
+            fn reg() -> &'static crate::pac::uart0::RegisterBlock {
+                unsafe { &*crate::pac::$rb::ptr() }
             }
         }
     };

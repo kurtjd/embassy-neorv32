@@ -1,23 +1,30 @@
 //! General Purpose Timer (GPTMR)
+use crate::interrupt::typelevel::{Binding, Handler, Interrupt};
 use crate::peripherals::GPTMR;
 use core::future::poll_fn;
 use core::marker::PhantomData;
 use core::task::Poll;
 use embassy_hal_internal::{Peri, PeripheralType};
 use embassy_sync::waitqueue::AtomicWaker;
-use pac::interrupt::CoreInterrupt;
 use portable_atomic::{AtomicBool, Ordering};
 
 static GPTMR_WAKER: AtomicWaker = AtomicWaker::new();
 static WAKE_FLAG: AtomicBool = AtomicBool::new(false);
 
-#[riscv_rt::core_interrupt(CoreInterrupt::GPTMR)]
-fn gptmr_handler() {
-    unsafe { Gptmr::<Async>::irq_clear() };
-    // There is no internal way to check if IRQ happened after clearing IRQ
-    // So need a flag for waker to check
-    WAKE_FLAG.store(true, Ordering::SeqCst);
-    GPTMR_WAKER.wake();
+// GPTMR interrupt handler binding
+pub struct InterruptHandler<T: Instance> {
+    _phantom: PhantomData<T>,
+}
+
+impl<T: Instance> Handler<T::Interrupt> for InterruptHandler<T> {
+    unsafe fn on_interrupt() {
+        unsafe { Gptmr::<GPTMR, Async>::irq_clear() };
+
+        // There is no internal way to check if IRQ happened after clearing IRQ
+        // So need a flag for waker to check
+        WAKE_FLAG.store(true, Ordering::SeqCst);
+        GPTMR_WAKER.wake();
+    }
 }
 
 /// GPTMR Prescaler
@@ -77,23 +84,28 @@ impl From<u8> for Prescaler {
 }
 
 /// General Purpose Timer (GPTMR) Driver
-pub struct Gptmr<'d, M: WaitMode> {
-    reg: &'static pac::gptmr::RegisterBlock,
-    _phantom: PhantomData<(&'d (), M)>,
+pub struct Gptmr<'d, T: Instance, M: WaitMode> {
+    _phantom: PhantomData<&'d (T, M)>,
 }
 
-impl<'d> Gptmr<'d, Blocking> {
+impl<'d, T: Instance> Gptmr<'d, T, Blocking> {
     /// Returns a new blocking GPTMR with given prescaler
-    pub fn new_blocking<T: Instance>(_instance: Peri<'d, T>, psc: Prescaler) -> Self {
+    pub fn new_blocking(_instance: Peri<'d, T>, psc: Prescaler) -> Self {
         Self::new_inner(_instance, psc)
     }
 }
 
-impl<'d> Gptmr<'d, Async> {
+impl<'d, T: Instance> Gptmr<'d, T, Async> {
     /// Returns a new async GPTMR with given prescaler
-    pub fn new_async<T: Instance>(_instance: Peri<'d, T>, psc: Prescaler) -> Self {
+    pub fn new_async(
+        _instance: Peri<'d, T>,
+        psc: Prescaler,
+        _irq: impl Binding<T::Interrupt, InterruptHandler<T>> + 'd,
+    ) -> Self {
         let gptmr = Self::new_inner(_instance, psc);
-        unsafe { riscv::interrupt::enable_interrupt(CoreInterrupt::GPTMR) };
+        unsafe {
+            T::Interrupt::enable();
+        }
         gptmr
     }
 
@@ -101,13 +113,13 @@ impl<'d> Gptmr<'d, Async> {
         // TODO: I think there might be issues with ISR triggering once before this is called
         // Also hanging when I use Acquire/Release ordering is suspect
         poll_fn(|cx| {
+            GPTMR_WAKER.register(cx.waker());
             if WAKE_FLAG
                 .compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst)
                 .is_ok()
             {
                 Poll::Ready(())
             } else {
-                GPTMR_WAKER.register(cx.waker());
                 Poll::Pending
             }
         })
@@ -115,10 +127,9 @@ impl<'d> Gptmr<'d, Async> {
     }
 }
 
-impl<'d, M: WaitMode> Gptmr<'d, M> {
-    fn new_inner<T: Instance>(_instance: Peri<'d, T>, psc: Prescaler) -> Self {
+impl<'d, T: Instance, M: WaitMode> Gptmr<'d, T, M> {
+    fn new_inner(_instance: Peri<'d, T>, psc: Prescaler) -> Self {
         let gptmr = Self {
-            reg: T::reg(),
             _phantom: PhantomData,
         };
 
@@ -129,51 +140,51 @@ impl<'d, M: WaitMode> Gptmr<'d, M> {
     /// Set the GPTMR prescaler
     #[inline(always)]
     pub fn set_prescaler(&self, psc: Prescaler) {
-        self.reg
+        T::reg()
             .ctrl()
             .modify(|_, w| unsafe { w.gptmr_ctrl_prsc().bits(psc.into()) });
     }
 
     /// Returns the GPTMR prescaler
     pub fn prescaler(&self) -> Prescaler {
-        let psc = self.reg.ctrl().read().gptmr_ctrl_prsc().bits();
+        let psc = T::reg().ctrl().read().gptmr_ctrl_prsc().bits();
         psc.into()
     }
 
     /// Enable the GPTMR
     #[inline(always)]
     pub fn enable(&self) {
-        self.reg.ctrl().modify(|_, w| w.gptmr_ctrl_en().set_bit());
+        T::reg().ctrl().modify(|_, w| w.gptmr_ctrl_en().set_bit());
     }
 
     /// Disable the GPTMR
     #[inline(always)]
     pub fn disable(&self) {
-        self.reg.ctrl().modify(|_, w| w.gptmr_ctrl_en().clear_bit());
+        T::reg().ctrl().modify(|_, w| w.gptmr_ctrl_en().clear_bit());
     }
 
     /// Returns true if the GPTMR is enabled
     #[inline(always)]
     pub fn enabled(&self) -> bool {
-        self.reg.ctrl().read().gptmr_ctrl_en().bit_is_set()
+        T::reg().ctrl().read().gptmr_ctrl_en().bit_is_set()
     }
 
     /// Returns true if the GPTMR interrupt is pending
     #[inline(always)]
     pub fn irq_pending(&self) -> bool {
-        self.reg.ctrl().read().gptmr_ctrl_irq_pnd().bit_is_set()
+        T::reg().ctrl().read().gptmr_ctrl_irq_pnd().bit_is_set()
     }
 
     /// Returns the current GPTMR counter (in ticks)
     #[inline(always)]
     pub fn count(&self) -> u32 {
-        self.reg.count().read().bits()
+        T::reg().count().read().bits()
     }
 
     /// Returns the GPTMR threshold (in ticks)
     #[inline(always)]
     pub fn threshold(&self) -> u32 {
-        self.reg.thres().read().bits()
+        T::reg().thres().read().bits()
     }
 
     /// Set the GPTMR threshold (in ticks) before interrupt is triggered
@@ -183,7 +194,7 @@ impl<'d, M: WaitMode> Gptmr<'d, M> {
     /// However, interrupt must be acknowleged via [Self::irq_clear]
     #[inline(always)]
     pub fn set_threshold(&self, threshold_ticks: u32) {
-        self.reg
+        T::reg()
             .thres()
             .write(|w| unsafe { w.bits(threshold_ticks) });
     }
@@ -202,12 +213,12 @@ impl<'d, M: WaitMode> Gptmr<'d, M> {
     /// The caller is responsible for ensuring this does not cause unexpected behavior
     #[inline(always)]
     pub unsafe fn irq_clear() {
-        let reg = unsafe { &*pac::Gptmr::ptr() };
-
         // TODO: Investigate why this needs calling in a loop
         // Calling clear then waiting until irq is no longer pending just seems to hang
-        while reg.ctrl().read().gptmr_ctrl_irq_pnd().bit_is_set() {
-            reg.ctrl().modify(|_, w| w.gptmr_ctrl_irq_clr().set_bit());
+        while T::reg().ctrl().read().gptmr_ctrl_irq_pnd().bit_is_set() {
+            T::reg()
+                .ctrl()
+                .modify(|_, w| w.gptmr_ctrl_irq_clr().set_bit());
         }
     }
 }
@@ -229,12 +240,14 @@ impl WaitMode for Async {}
 /// A valid GPTMR peripheral
 #[allow(private_bounds)]
 pub trait Instance: crate::Sealed + PeripheralType {
-    fn reg() -> &'static pac::gptmr::RegisterBlock;
+    type Interrupt: Interrupt;
+    fn reg() -> &'static crate::pac::gptmr::RegisterBlock;
 }
 
 impl crate::Sealed for GPTMR {}
 impl Instance for GPTMR {
-    fn reg() -> &'static pac::gptmr::RegisterBlock {
-        unsafe { &*pac::Gptmr::ptr() }
+    type Interrupt = crate::interrupt::typelevel::GPTMR;
+    fn reg() -> &'static crate::pac::gptmr::RegisterBlock {
+        unsafe { &*crate::pac::Gptmr::ptr() }
     }
 }

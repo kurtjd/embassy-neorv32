@@ -1,14 +1,24 @@
 #![no_std]
-mod chip;
 pub mod dma;
 pub mod gptmr;
+mod interrupts;
 pub mod sysinfo;
 mod time_driver;
 pub mod trng;
 pub mod uart;
 pub mod wdt;
 
-pub use chip::{Peripherals, peripherals};
+// Peripherals and interrupts supported by the NEORV32 chip
+mod chip {
+    pub use neorv32_pac as pac;
+    embassy_hal_internal::peripherals!(WDT, UART0, UART1, GPTMR, SYSINFO, TRNG, DMA);
+    pub mod interrupts {
+        crate::interrupt_mod!(TRNG, DMA, GPTMR);
+    }
+}
+
+pub use chip::pac;
+pub use chip::{Peripherals, interrupts::*, peripherals};
 
 // TODO: Get main clock freq either statically via config or runtime via SysInfo
 // This will likely need to only be runtime determined since SysInfo allows dynamic changing of freq

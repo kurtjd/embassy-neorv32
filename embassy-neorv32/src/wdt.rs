@@ -43,7 +43,7 @@ impl From<u8> for ResetCause {
 }
 
 pub struct Wdt<'d, M: LockMode> {
-    reg: &'static pac::wdt::RegisterBlock,
+    reg: &'static crate::pac::wdt::RegisterBlock,
     _phantom: PhantomData<(&'d (), M)>,
 }
 
@@ -163,12 +163,12 @@ impl LockMode for Locked {}
 /// A valid WDT peripheral
 #[allow(private_bounds)]
 pub trait Instance: crate::Sealed + PeripheralType {
-    fn reg() -> &'static pac::wdt::RegisterBlock;
+    fn reg() -> &'static crate::pac::wdt::RegisterBlock;
 }
 
 impl crate::Sealed for WDT {}
 impl Instance for WDT {
-    fn reg() -> &'static pac::wdt::RegisterBlock {
-        unsafe { &*pac::Wdt::ptr() }
+    fn reg() -> &'static crate::pac::wdt::RegisterBlock {
+        unsafe { &*crate::pac::Wdt::ptr() }
     }
 }

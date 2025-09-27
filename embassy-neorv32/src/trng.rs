@@ -1,51 +1,57 @@
 //! True Random-Number Generator (TRNG)
+use crate::interrupt::typelevel::{Binding, Handler, Interrupt};
 use crate::peripherals::TRNG;
 use core::future::poll_fn;
 use core::marker::PhantomData;
 use core::task::Poll;
 use embassy_hal_internal::{Peri, PeripheralType};
 use embassy_sync::waitqueue::AtomicWaker;
-use pac::interrupt::CoreInterrupt;
 
 static TRNG_WAKER: AtomicWaker = AtomicWaker::new();
 
-#[riscv_rt::core_interrupt(CoreInterrupt::TRNG)]
-fn trng_handler() {
-    // There doesn't appear to be any other way to ack the interrupt for TRNG
-    // other than reading from the FIFO (which we don't want to do here)
-    // or just disabling it
-    riscv::interrupt::disable_interrupt(CoreInterrupt::TRNG);
-    TRNG_WAKER.wake();
+// TRNG interrupt handler binding
+pub struct InterruptHandler<T: Instance> {
+    _phantom: PhantomData<T>,
+}
+
+impl<T: Instance> Handler<T::Interrupt> for InterruptHandler<T> {
+    unsafe fn on_interrupt() {
+        T::Interrupt::disable();
+        TRNG_WAKER.wake();
+    }
 }
 
 /// True Random-Number Generator (TRNG) Driver
-pub struct Trng<'d, M: IoMode> {
-    reg: &'static pac::trng::RegisterBlock,
-    _phantom: PhantomData<(&'d (), M)>,
+pub struct Trng<'d, T: Instance, M: IoMode> {
+    _phantom: PhantomData<&'d (T, M)>,
 }
 
-impl<'d> Trng<'d, Blocking> {
+impl<'d, T: Instance> Trng<'d, T, Blocking> {
     /// Returns a new instance of a blocking TRNG and enables it
-    pub fn new_blocking<T: Instance>(_instance: Peri<'d, T>) -> Self {
+    pub fn new_blocking(_instance: Peri<'d, T>) -> Self {
         Self::new_inner(_instance)
     }
 }
 
-impl<'d> Trng<'d, Async> {
+impl<'d, T: Instance> Trng<'d, T, Async> {
     /// Returns a new instance of an async TRNG and enables it
-    pub fn new_async<T: Instance>(_instance: Peri<'d, T>) -> Self {
+    pub fn new_async(
+        _instance: Peri<'d, T>,
+        _irq: impl Binding<T::Interrupt, InterruptHandler<T>> + 'd,
+    ) -> Self {
         Self::new_inner(_instance)
     }
 
     /// Reads a byte from the TRNG
     pub async fn read_byte(&self) -> u8 {
         poll_fn(|cx| {
+            TRNG_WAKER.register(cx.waker());
             if self.data_available() {
                 Poll::Ready(self.blocking_read_byte())
             } else {
-                // Need to always re-enable interrupt before going to sleep
-                unsafe { riscv::interrupt::enable_interrupt(CoreInterrupt::TRNG) };
-                TRNG_WAKER.register(cx.waker());
+                unsafe {
+                    T::Interrupt::enable();
+                }
                 Poll::Pending
             }
         })
@@ -60,10 +66,9 @@ impl<'d> Trng<'d, Async> {
     }
 }
 
-impl<'d, M: IoMode> Trng<'d, M> {
-    fn new_inner<T: Instance>(_instance: Peri<'d, T>) -> Self {
+impl<'d, T: Instance, M: IoMode> Trng<'d, T, M> {
+    fn new_inner(_instance: Peri<'d, T>) -> Self {
         let trng = Self {
-            reg: T::reg(),
             _phantom: PhantomData,
         };
 
@@ -74,19 +79,19 @@ impl<'d, M: IoMode> Trng<'d, M> {
     /// Enables the TRNG
     #[inline(always)]
     pub fn enable(&self) {
-        self.reg.ctrl().modify(|_, w| w.trng_ctrl_en().set_bit());
+        T::reg().ctrl().modify(|_, w| w.trng_ctrl_en().set_bit());
     }
 
     /// Disables the TRNG, clearing the FIFO
     #[inline(always)]
     pub fn disable(&self) {
-        self.reg.ctrl().modify(|_, w| w.trng_ctrl_en().clear_bit());
+        T::reg().ctrl().modify(|_, w| w.trng_ctrl_en().clear_bit());
     }
 
     /// Flushes/clears the TRNG FIFO
     #[inline(always)]
     pub fn flush(&self) {
-        self.reg
+        T::reg()
             .ctrl()
             .modify(|_, w| w.trng_ctrl_fifo_clr().set_bit());
     }
@@ -95,7 +100,7 @@ impl<'d, M: IoMode> Trng<'d, M> {
     #[inline(always)]
     pub fn fifo_depth(&self) -> u32 {
         // Read value is log2, so do inverse log for actual value
-        1 << self.reg.ctrl().read().trng_ctrl_fifo_size().bits() as u32
+        1 << T::reg().ctrl().read().trng_ctrl_fifo_size().bits() as u32
     }
 
     /// Returns true if TRNG is running in simulation
@@ -103,19 +108,19 @@ impl<'d, M: IoMode> Trng<'d, M> {
     /// If so, the output is pseudo-random as opposed to true random
     #[inline(always)]
     pub fn sim_mode(&self) -> bool {
-        self.reg.ctrl().read().trng_ctrl_sim_mode().bit_is_set()
+        T::reg().ctrl().read().trng_ctrl_sim_mode().bit_is_set()
     }
 
     /// Returns true if TRNG data is available
     #[inline(always)]
     pub fn data_available(&self) -> bool {
-        self.reg.ctrl().read().trng_ctrl_avail().bit_is_set()
+        T::reg().ctrl().read().trng_ctrl_avail().bit_is_set()
     }
 
     /// Reads a byte from the TRNG if available, blocking if not
     pub fn blocking_read_byte(&self) -> u8 {
         while !self.data_available() {}
-        self.reg.data().read().trng_data().bits()
+        T::reg().data().read().trng_data().bits()
     }
 
     /// Reads bytes from TRNG FIFO until buffer is full, blocking if empty
@@ -143,12 +148,14 @@ impl IoMode for Async {}
 /// A valid TRNG peripheral
 #[allow(private_bounds)]
 pub trait Instance: crate::Sealed + PeripheralType {
-    fn reg() -> &'static pac::trng::RegisterBlock;
+    type Interrupt: Interrupt;
+    fn reg() -> &'static crate::pac::trng::RegisterBlock;
 }
 
 impl crate::Sealed for TRNG {}
 impl Instance for TRNG {
-    fn reg() -> &'static pac::trng::RegisterBlock {
-        unsafe { &*pac::Trng::ptr() }
+    type Interrupt = crate::interrupt::typelevel::TRNG;
+    fn reg() -> &'static crate::pac::trng::RegisterBlock {
+        unsafe { &*crate::pac::Trng::ptr() }
     }
 }
