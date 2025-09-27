@@ -21,8 +21,11 @@ embassy-time-driver = { version = "0.2.1", features = ["tick-hz-100_000_000"] }
 embassy-time-queue-utils = "0.3.0"
 neorv32-pac = { path = "../neorv32-pac", features = ["rt", "critical-section"] }
 # TODO: Don't use this if target has A extension
+portable-atomic = { version = "1.11.1", default-features = false }
+riscv = { version = "0.15.0", features = ["critical-section-single-hart"] }
+riscv-rt = "0.16.0"
+
+[target.'cfg(all(target_arch = "riscv32", not(target_feature = "a")))'.dependencies]
 portable-atomic = { version = "1.11.1", default-features = false, features = [
     "unsafe-assume-single-core",
 ] }
-riscv = { version = "0.15.0", features = ["critical-section-single-hart"] }
-riscv-rt = "0.16.0"

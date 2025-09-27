@@ -1,5 +1,6 @@
 #![no_std]
 pub mod dma;
+pub mod gpio;
 pub mod gptmr;
 mod interrupts;
 pub mod sysinfo;
@@ -11,9 +12,10 @@ pub mod wdt;
 // Peripherals and interrupts supported by the NEORV32 chip
 mod chip {
     pub use neorv32_pac as pac;
-    embassy_hal_internal::peripherals!(WDT, UART0, UART1, GPTMR, SYSINFO, TRNG, DMA);
+    // TODO: List all 32 ports
+    embassy_hal_internal::peripherals!(WDT, UART0, UART1, GPTMR, SYSINFO, TRNG, DMA, GPIO, PORT0);
     pub mod interrupts {
-        crate::interrupt_mod!(TRNG, DMA, GPTMR);
+        crate::interrupt_mod!(TRNG, DMA, GPTMR, GPIO);
     }
 }
 
@@ -28,6 +30,7 @@ const CPU_CLK_FREQ: u32 = 100_000_000;
 pub fn init() -> Peripherals {
     let p = Peripherals::take();
 
+    // TODO: Want to ensure this is called before using asyncs, but not force it if not
     // SAFETY: This can only be called once and before any CS
     unsafe {
         riscv::interrupt::enable();

@@ -234,6 +234,10 @@ impl<'d, T: Instance, M: IoMode> Dma<'d, T, M> {
         res
     }
 
+    /// Acknowledge interrupt
+    ///
+    /// # Safety
+    /// TODO
     pub unsafe fn irq_ack() {
         T::reg().ctrl().modify(|_, w| w.dma_ctrl_ack().set_bit());
     }
