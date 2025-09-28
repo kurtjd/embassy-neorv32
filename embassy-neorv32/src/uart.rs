@@ -41,7 +41,7 @@ impl<'d, T: Instance> Uart<'d, T, Blocking> {
                 .modify(|_, w| w.uart_ctrl_hwfc_en().set_bit());
         }
 
-        let mut baud_div = crate::CPU_CLK_FREQ / (2 * baud_rate);
+        let mut baud_div = crate::sysinfo::SysInfo::clock_freq() / (2 * baud_rate);
         let mut prsc_sel = 0;
 
         // Calculate clock prescaler and baud rate prescaler

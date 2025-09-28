@@ -24,11 +24,6 @@ mod chip {
 pub use chip::pac;
 pub use chip::{Peripherals, interrupts::*, peripherals};
 
-// TODO: Get main clock freq either statically via config or runtime via SysInfo
-// This will likely need to only be runtime determined since SysInfo allows dynamic changing of freq
-// That could make time-driver problematic which needs static freq... need to look into
-const CPU_CLK_FREQ: u32 = 100_000_000;
-
 pub fn init() -> Peripherals {
     // Attempt to take first so we panic before doing anything else
     let p = Peripherals::take();

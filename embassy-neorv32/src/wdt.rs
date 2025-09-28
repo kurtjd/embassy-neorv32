@@ -95,9 +95,9 @@ impl<'d, T: Instance> Wdt<'d, T, Unlocked> {
     ///
     /// Millisecond precision may not be possible depending on configured main clock frequency
     pub fn set_timeout_ms(&self, timeout_ms: u32) {
-        const WDT_CLOCK_FREQ: u32 = crate::CPU_CLK_FREQ / 4096;
-        const TICKS_PER_MS: u32 = WDT_CLOCK_FREQ / 1000;
-        let timeout = timeout_ms * TICKS_PER_MS;
+        let wdt_clock_freq: u32 = crate::sysinfo::SysInfo::clock_freq() / 4096;
+        let ticks_per_ms: u32 = wdt_clock_freq / 1000;
+        let timeout = timeout_ms * ticks_per_ms;
         self.set_timeout(timeout);
     }
 
