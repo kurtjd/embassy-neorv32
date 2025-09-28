@@ -7,8 +7,6 @@ use core::task::Poll;
 use embassy_hal_internal::{Peri, PeripheralType};
 use embassy_sync::waitqueue::AtomicWaker;
 
-static TRNG_WAKER: AtomicWaker = AtomicWaker::new();
-
 // TRNG interrupt handler binding.
 pub struct InterruptHandler<T: Instance> {
     _phantom: PhantomData<T>,
@@ -17,7 +15,7 @@ pub struct InterruptHandler<T: Instance> {
 impl<T: Instance> Handler<T::Interrupt> for InterruptHandler<T> {
     unsafe fn on_interrupt() {
         T::Interrupt::disable();
-        TRNG_WAKER.wake();
+        T::waker().wake();
     }
 }
 
@@ -46,7 +44,7 @@ impl<'d, T: Instance> Trng<'d, T, Async> {
     /// Reads a byte from the TRNG.
     pub async fn read_byte(&mut self) -> u8 {
         poll_fn(|cx| {
-            TRNG_WAKER.register(cx.waker());
+            T::waker().register(cx.waker());
             if self.data_available() {
                 Poll::Ready(self.blocking_read_byte())
             } else {
@@ -151,6 +149,7 @@ impl ReadMode for Async {}
 
 trait SealedInstance {
     fn reg() -> &'static crate::pac::trng::RegisterBlock;
+    fn waker() -> &'static AtomicWaker;
 }
 
 /// A valid TRNG peripheral.
@@ -161,6 +160,11 @@ pub trait Instance: SealedInstance + PeripheralType {
 impl SealedInstance for TRNG {
     fn reg() -> &'static crate::pac::trng::RegisterBlock {
         unsafe { &*crate::pac::Trng::ptr() }
+    }
+
+    fn waker() -> &'static AtomicWaker {
+        static WAKER: AtomicWaker = AtomicWaker::new();
+        &WAKER
     }
 }
 impl Instance for TRNG {

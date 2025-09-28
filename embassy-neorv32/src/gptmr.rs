@@ -7,8 +7,6 @@ use core::task::Poll;
 use embassy_hal_internal::{Peri, PeripheralType};
 use embassy_sync::waitqueue::AtomicWaker;
 
-static GPTMR_WAKER: AtomicWaker = AtomicWaker::new();
-
 // GPTMR interrupt handler binding
 pub struct InterruptHandler<T: Instance> {
     _phantom: PhantomData<T>,
@@ -18,7 +16,7 @@ impl<T: Instance> Handler<T::Interrupt> for InterruptHandler<T> {
     unsafe fn on_interrupt() {
         unsafe { Gptmr::<GPTMR, Async>::irq_clear() };
         T::Interrupt::disable();
-        GPTMR_WAKER.wake();
+        T::waker().wake();
     }
 }
 
@@ -107,7 +105,7 @@ impl<'d, T: Instance> Gptmr<'d, T, Async> {
         }
 
         poll_fn(|cx| {
-            GPTMR_WAKER.register(cx.waker());
+            T::waker().register(cx.waker());
 
             // If interrupt is disabled, we know IRQ triggered
             // We have to ack IRQ in handler, which clears pending bit leaving us nothing to check
@@ -237,6 +235,7 @@ impl WaitMode for Async {}
 
 trait SealedInstance {
     fn reg() -> &'static crate::pac::gptmr::RegisterBlock;
+    fn waker() -> &'static AtomicWaker;
 }
 
 /// A valid GPTMR peripheral
@@ -247,6 +246,11 @@ pub trait Instance: SealedInstance + PeripheralType {
 impl SealedInstance for GPTMR {
     fn reg() -> &'static crate::pac::gptmr::RegisterBlock {
         unsafe { &*crate::pac::Gptmr::ptr() }
+    }
+
+    fn waker() -> &'static AtomicWaker {
+        static WAKER: AtomicWaker = AtomicWaker::new();
+        &WAKER
     }
 }
 impl Instance for GPTMR {

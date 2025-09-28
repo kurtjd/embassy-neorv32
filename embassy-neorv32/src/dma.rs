@@ -10,8 +10,6 @@ use core::task::Poll;
 use embassy_hal_internal::{Peri, PeripheralType};
 use embassy_sync::waitqueue::AtomicWaker;
 
-static DMA_WAKER: AtomicWaker = AtomicWaker::new();
-
 pub struct InterruptHandler<T: Instance> {
     _phantom: PhantomData<T>,
 }
@@ -22,7 +20,7 @@ impl<T: Instance> Handler<T::Interrupt> for InterruptHandler<T> {
         // So instead disable to prevent storm and ACK and re-enable in waker
         // Could use atomic flag? Not sure what the best approach is...
         T::Interrupt::disable();
-        DMA_WAKER.wake();
+        T::waker().wake();
     }
 }
 
@@ -116,7 +114,7 @@ impl<'d, T: Instance> Dma<'d, T, Async> {
         self.start_transfer(src.as_ptr(), dst.as_mut_ptr(), src.len() as u32);
 
         poll_fn(|cx| {
-            DMA_WAKER.register(cx.waker());
+            T::waker().register(cx.waker());
             let p = if self.transfer_complete() {
                 Poll::Ready(Ok(()))
             } else if self.bus_error() {
@@ -260,6 +258,7 @@ impl IoMode for Async {}
 
 trait SealedInstance {
     fn reg() -> &'static crate::pac::dma::RegisterBlock;
+    fn waker() -> &'static AtomicWaker;
 }
 
 /// A valid DMA peripheral.
@@ -270,6 +269,11 @@ pub trait Instance: SealedInstance + PeripheralType {
 impl SealedInstance for DMA {
     fn reg() -> &'static crate::pac::dma::RegisterBlock {
         unsafe { &*crate::pac::Dma::ptr() }
+    }
+
+    fn waker() -> &'static AtomicWaker {
+        static WAKER: AtomicWaker = AtomicWaker::new();
+        &WAKER
     }
 }
 impl Instance for DMA {
