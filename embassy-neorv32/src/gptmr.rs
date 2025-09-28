@@ -6,10 +6,8 @@ use core::marker::PhantomData;
 use core::task::Poll;
 use embassy_hal_internal::{Peri, PeripheralType};
 use embassy_sync::waitqueue::AtomicWaker;
-use portable_atomic::{AtomicBool, Ordering};
 
 static GPTMR_WAKER: AtomicWaker = AtomicWaker::new();
-static WAKE_FLAG: AtomicBool = AtomicBool::new(false);
 
 // GPTMR interrupt handler binding
 pub struct InterruptHandler<T: Instance> {
@@ -19,10 +17,7 @@ pub struct InterruptHandler<T: Instance> {
 impl<T: Instance> Handler<T::Interrupt> for InterruptHandler<T> {
     unsafe fn on_interrupt() {
         unsafe { Gptmr::<GPTMR, Async>::irq_clear() };
-
-        // There is no internal way to check if IRQ happened after clearing IRQ
-        // So need a flag for waker to check
-        WAKE_FLAG.store(true, Ordering::SeqCst);
+        T::Interrupt::disable();
         GPTMR_WAKER.wake();
     }
 }
@@ -102,22 +97,21 @@ impl<'d, T: Instance> Gptmr<'d, T, Async> {
         psc: Prescaler,
         _irq: impl Binding<T::Interrupt, InterruptHandler<T>> + 'd,
     ) -> Self {
-        let gptmr = Self::new_inner(_instance, psc);
-        unsafe {
-            T::Interrupt::enable();
-        }
-        gptmr
+        Self::new_inner(_instance, psc)
     }
 
     pub async fn wait(&self) {
-        // TODO: I think there might be issues with ISR triggering once before this is called
-        // Also hanging when I use Acquire/Release ordering is suspect
+        unsafe {
+            T::Interrupt::enable();
+        }
+
         poll_fn(|cx| {
             GPTMR_WAKER.register(cx.waker());
-            if WAKE_FLAG
-                .compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst)
-                .is_ok()
-            {
+
+            // If interrupt is disabled, we know IRQ triggered
+            // We have to ack IRQ in handler, which clears pending bit leaving us nothing to check
+            // So we rely on this
+            if !T::Interrupt::is_enabled() {
                 Poll::Ready(())
             } else {
                 Poll::Pending
