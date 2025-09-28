@@ -1,6 +1,10 @@
 //! SysInfo
-use crate::peripherals::SYSINFO;
-use embassy_hal_internal::{Peri, PeripheralType};
+
+// As this is a read-only peripheral (with the exception of set mainclk freq, which we mark as unsafe),
+// this driver is designed to be free-standing for ease of use.
+fn reg() -> &'static crate::pac::sysinfo::RegisterBlock {
+    unsafe { &*crate::pac::Sysinfo::ptr() }
+}
 
 /// Processor boot mode.
 pub enum BootMode {
@@ -178,80 +182,64 @@ impl SocConfig {
 }
 
 /// SysInfo Driver
-pub struct SysInfo<'d, T: Instance> {
-    _instance: Peri<'d, T>,
-}
+pub struct SysInfo;
 
-impl<'d, T: Instance> SysInfo<'d, T> {
-    /// Returns a SysInfo instance.
-    pub fn new(_instance: Peri<'d, T>) -> Self {
-        Self { _instance }
-    }
-
+impl SysInfo {
     /// Returns the main CPU clock frequency (Hz).
     #[inline(always)]
-    pub fn clock_freq(&self) -> u32 {
-        T::reg().clk().read().bits()
+    pub fn clock_freq() -> u32 {
+        reg().clk().read().bits()
     }
 
     /// Sets the main CPU clock frequency (Hz).
+    ///
+    /// # Safety
+    /// The caller must ensure no other code is assuming a static main clock frequency.
+    ///
+    /// For example, this WILL break the `time-driver` which assumes a static clock.
     #[inline(always)]
-    pub fn set_clock_freq(&mut self, freq_hz: u32) {
-        T::reg().clk().write(|w| unsafe { w.bits(freq_hz) });
+    pub unsafe fn set_clock_freq(freq_hz: u32) {
+        reg().clk().write(|w| unsafe { w.bits(freq_hz) });
     }
 
     /// Returns the IMEM size in bytes.
     #[inline(always)]
-    pub fn imem_size(&self) -> u32 {
+    pub fn imem_size() -> u32 {
         // Read value is log2, so do inverse log for actual value
-        1 << T::reg().mem().read().sysinfo_misc_imem().bits() as u32
+        1 << reg().mem().read().sysinfo_misc_imem().bits() as u32
     }
 
     /// Returns the DMEM size in bytes.
     #[inline(always)]
-    pub fn dmem_size(&self) -> u32 {
+    pub fn dmem_size() -> u32 {
         // Read value is log2, so do inverse log for actual value
-        1 << T::reg().mem().read().sysinfo_misc_dmem().bits() as u32
+        1 << reg().mem().read().sysinfo_misc_dmem().bits() as u32
     }
 
     /// Returns the number of harts (cores).
     #[inline(always)]
-    pub fn num_harts(&self) -> u8 {
-        T::reg().mem().read().sysinfo_misc_hart().bits()
+    pub fn num_harts() -> u8 {
+        reg().mem().read().sysinfo_misc_hart().bits()
     }
 
     /// Returns the boot mode configuration.
     #[inline(always)]
-    pub fn boot_mode(&self) -> BootMode {
-        let raw = T::reg().mem().read().sysinfo_misc_boot().bits();
+    pub fn boot_mode() -> BootMode {
+        let raw = reg().mem().read().sysinfo_misc_boot().bits();
         BootMode::from(raw)
     }
 
     /// Returns the number of bus timeout cycles.
     #[inline(always)]
-    pub fn bus_timeout_cycles(&self) -> u8 {
-        T::reg().mem().read().sysinfo_misc_btmo().bits()
+    pub fn bus_timeout_cycles() -> u8 {
+        reg().mem().read().sysinfo_misc_btmo().bits()
     }
 
     /// Returns the SoC config.
     ///
     /// Additional methods can be called to check if SoC features are implemented.
     #[inline(always)]
-    pub fn soc_config(&self) -> SocConfig {
-        SocConfig(T::reg().soc().read().bits())
+    pub fn soc_config() -> SocConfig {
+        SocConfig(reg().soc().read().bits())
     }
 }
-
-trait SealedInstance {
-    fn reg() -> &'static crate::pac::sysinfo::RegisterBlock;
-}
-
-/// A valid SysInfo peripheral
-#[allow(private_bounds)]
-pub trait Instance: SealedInstance + PeripheralType {}
-impl SealedInstance for SYSINFO {
-    fn reg() -> &'static crate::pac::sysinfo::RegisterBlock {
-        unsafe { &*crate::pac::Sysinfo::ptr() }
-    }
-}
-impl Instance for SYSINFO {}

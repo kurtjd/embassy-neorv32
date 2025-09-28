@@ -15,9 +15,7 @@ pub mod wdt;
 mod chip {
     pub use neorv32_pac as pac;
     // TODO: List all 32 ports
-    embassy_hal_internal::peripherals!(
-        CLINT, WDT, UART0, UART1, GPTMR, SYSINFO, TRNG, DMA, GPIO, PORT0
-    );
+    embassy_hal_internal::peripherals!(CLINT, WDT, UART0, UART1, GPTMR, TRNG, DMA, GPIO, PORT0);
     pub mod interrupts {
         crate::interrupt_mod!(TRNG, DMA, GPTMR, GPIO);
     }

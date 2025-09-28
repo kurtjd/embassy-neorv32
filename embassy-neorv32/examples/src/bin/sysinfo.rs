@@ -12,33 +12,30 @@ async fn main(_spawner: embassy_executor::Spawner) {
     // Setup UART for display purposes
     let mut uart = Uart::new_blocking(p.UART0, 50_000_000, true, false);
 
-    // Setup SysInfo
-    let sysinfo = SysInfo::new(p.SYSINFO);
-
     // Print clock frequency
     writeln!(
         &mut uart,
         "Clock frequency: {} MHz",
-        sysinfo.clock_freq() / 1_000_000
+        SysInfo::clock_freq() / 1_000_000
     )
     .unwrap();
 
     // Print memory size
-    writeln!(&mut uart, "IMEM size: {} KiB", sysinfo.imem_size() / 1024).unwrap();
-    writeln!(&mut uart, "DMEM size: {} KiB", sysinfo.dmem_size() / 1024).unwrap();
+    writeln!(&mut uart, "IMEM size: {} KiB", SysInfo::imem_size() / 1024).unwrap();
+    writeln!(&mut uart, "DMEM size: {} KiB", SysInfo::dmem_size() / 1024).unwrap();
 
     // Print misc info
-    writeln!(&mut uart, "Num harts: {}", sysinfo.num_harts()).unwrap();
-    writeln!(&mut uart, "Boot mode: {}", sysinfo.boot_mode().as_str()).unwrap();
+    writeln!(&mut uart, "Num harts: {}", SysInfo::num_harts()).unwrap();
+    writeln!(&mut uart, "Boot mode: {}", SysInfo::boot_mode().as_str()).unwrap();
     writeln!(
         &mut uart,
         "Bus timeout cycles: {}",
-        sysinfo.bus_timeout_cycles()
+        SysInfo::bus_timeout_cycles()
     )
     .unwrap();
 
     // Retrieve SoC Config
-    let soc_config = sysinfo.soc_config();
+    let soc_config = SysInfo::soc_config();
 
     // Print processor features
     uart.blocking_write(b"\nProcessor Features:\n");
