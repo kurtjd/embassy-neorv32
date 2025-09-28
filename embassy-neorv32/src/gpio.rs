@@ -379,8 +379,6 @@ impl crate::Sealed for Async {}
 impl InputMode for Async {}
 
 /// A valid GPIO peripheral
-// TODO: Investigate if need critical section since Ports all share same registers
-// Also consider moving these to sealed
 #[allow(private_bounds)]
 pub trait Instance: crate::Sealed + PeripheralType {
     type Interrupt: Interrupt;
@@ -406,6 +404,7 @@ pub trait Instance: crate::Sealed + PeripheralType {
     fn irq_ack(portno: u32);
 }
 
+// TODO: Probably more efficient to not use CS here and let Port do it to batch together
 impl crate::Sealed for GPIO {}
 impl Instance for GPIO {
     type Interrupt = crate::interrupt::typelevel::GPIO;
@@ -431,51 +430,67 @@ impl Instance for GPIO {
     }
 
     fn set_low(portno: u32) {
-        Self::reg()
-            .port_out()
-            .modify(|r, w| unsafe { w.bits(r.bits() & !(1 << portno)) });
+        critical_section::with(|_| {
+            Self::reg()
+                .port_out()
+                .modify(|r, w| unsafe { w.bits(r.bits() & !(1 << portno)) })
+        });
     }
 
     fn set_high(portno: u32) {
-        Self::reg()
-            .port_out()
-            .modify(|r, w| unsafe { w.bits(r.bits() | (1 << portno)) });
+        critical_section::with(|_| {
+            Self::reg()
+                .port_out()
+                .modify(|r, w| unsafe { w.bits(r.bits() | (1 << portno)) })
+        });
     }
 
     fn set_level_trigger(portno: u32) {
-        Self::reg()
-            .irq_type()
-            .modify(|r, w| unsafe { w.bits(r.bits() & !(1 << portno)) });
+        critical_section::with(|_| {
+            Self::reg()
+                .irq_type()
+                .modify(|r, w| unsafe { w.bits(r.bits() & !(1 << portno)) })
+        });
     }
 
     fn set_edge_trigger(portno: u32) {
-        Self::reg()
-            .irq_type()
-            .modify(|r, w| unsafe { w.bits(r.bits() | (1 << portno)) });
+        critical_section::with(|_| {
+            Self::reg()
+                .irq_type()
+                .modify(|r, w| unsafe { w.bits(r.bits() | (1 << portno)) })
+        });
     }
 
     fn set_trigger_polarity_low(portno: u32) {
-        Self::reg()
-            .irq_polarity()
-            .modify(|r, w| unsafe { w.bits(r.bits() & !(1 << portno)) });
+        critical_section::with(|_| {
+            Self::reg()
+                .irq_polarity()
+                .modify(|r, w| unsafe { w.bits(r.bits() & !(1 << portno)) })
+        });
     }
 
     fn set_trigger_polarity_high(portno: u32) {
-        Self::reg()
-            .irq_polarity()
-            .modify(|r, w| unsafe { w.bits(r.bits() | (1 << portno)) });
+        critical_section::with(|_| {
+            Self::reg()
+                .irq_polarity()
+                .modify(|r, w| unsafe { w.bits(r.bits() | (1 << portno)) })
+        });
     }
 
     fn irq_enable(portno: u32) {
-        Self::reg()
-            .irq_enable()
-            .modify(|r, w| unsafe { w.bits(r.bits() | (1 << portno)) });
+        critical_section::with(|_| {
+            Self::reg()
+                .irq_enable()
+                .modify(|r, w| unsafe { w.bits(r.bits() | (1 << portno)) })
+        });
     }
 
     fn irq_disable(portno: u32) {
-        Self::reg()
-            .irq_enable()
-            .modify(|r, w| unsafe { w.bits(r.bits() & !(1 << portno)) });
+        critical_section::with(|_| {
+            Self::reg()
+                .irq_enable()
+                .modify(|r, w| unsafe { w.bits(r.bits() & !(1 << portno)) })
+        });
     }
 
     fn irq_enabled(portno: u32) -> bool {
@@ -487,9 +502,11 @@ impl Instance for GPIO {
     }
 
     fn irq_ack(portno: u32) {
-        Self::reg()
-            .irq_pending()
-            .modify(|r, w| unsafe { w.bits(r.bits() & !(1 << portno)) });
+        critical_section::with(|_| {
+            Self::reg()
+                .irq_pending()
+                .modify(|r, w| unsafe { w.bits(r.bits() & !(1 << portno)) })
+        });
     }
 }
 

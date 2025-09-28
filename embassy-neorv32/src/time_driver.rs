@@ -26,8 +26,7 @@ struct MtimerDriver {
 
 impl MtimerDriver {
     fn on_interrupt(&self) {
-        // Disable the mtimer interrupt
-        riscv::interrupt::disable_interrupt(crate::pac::interrupt::CoreInterrupt::MachineTimer);
+        clint().mtimer().disable();
 
         critical_section::with(|cs| {
             let mut queue = self.queue.borrow(cs).borrow_mut();
@@ -54,11 +53,7 @@ impl MtimerDriver {
             false
         } else {
             // SAFETY: TODO
-            unsafe {
-                riscv::interrupt::enable_interrupt(
-                    crate::pac::interrupt::CoreInterrupt::MachineTimer,
-                );
-            }
+            unsafe { clint().mtimer().enable() };
             true
         }
     }

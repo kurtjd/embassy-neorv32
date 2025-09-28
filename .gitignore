@@ -1,3 +1,4 @@
 *.patched
 target/
 Cargo.lock
+notes.txt
