@@ -86,20 +86,21 @@ pub enum Descriptor {
     Config(TransferConfig),
 }
 
-/// Direct Memory Access (DMA) Driver
+/// Direct Memory Access (DMA) Driver.
 pub struct Dma<'d, T: Instance, M: IoMode> {
-    _phantom: PhantomData<&'d (T, M)>,
+    _instance: Peri<'d, T>,
+    _phantom: PhantomData<M>,
 }
 
 impl<'d, T: Instance> Dma<'d, T, Blocking> {
-    /// Returns a new instance of a blocking DMA and enables it
+    /// Returns a new instance of a blocking DMA and enables it.
     pub fn new_blocking(_instance: Peri<'d, T>) -> Self {
         Self::new_inner(_instance)
     }
 }
 
 impl<'d, T: Instance> Dma<'d, T, Async> {
-    /// Returns a new instance of an async DMA and enables it
+    /// Returns a new instance of an async DMA and enables it.
     pub fn new_async(
         _instance: Peri<'d, T>,
         _irq: impl Binding<T::Interrupt, InterruptHandler<T>> + 'd,
@@ -107,12 +108,13 @@ impl<'d, T: Instance> Dma<'d, T, Async> {
         Self::new_inner(_instance)
     }
 
-    pub async fn transfer(&self, src: &[u8], dst: &mut [u8]) -> Result<(), Error> {
+    pub async fn transfer(&mut self, src: &[u8], dst: &mut [u8]) -> Result<(), Error> {
         assert!(src.len() == dst.len());
 
         // These fences are needed if dCache is enabled to force CPU to flush cache and see DMA writes
         fence(Ordering::Release);
         self.start_transfer(src.as_ptr(), dst.as_mut_ptr(), src.len() as u32);
+
         poll_fn(|cx| {
             DMA_WAKER.register(cx.waker());
             let p = if self.transfer_complete() {
@@ -120,17 +122,13 @@ impl<'d, T: Instance> Dma<'d, T, Async> {
             } else if self.bus_error() {
                 Poll::Ready(Err(Error::BusError))
             } else {
-                unsafe {
-                    T::Interrupt::enable();
-                }
+                unsafe { T::Interrupt::enable() }
                 Poll::Pending
             };
 
             if p.is_ready() {
                 fence(Ordering::Acquire);
-                unsafe {
-                    Self::irq_ack();
-                }
+                unsafe { Self::irq_ack() }
             }
 
             p
@@ -141,7 +139,8 @@ impl<'d, T: Instance> Dma<'d, T, Async> {
 
 impl<'d, T: Instance, M: IoMode> Dma<'d, T, M> {
     fn new_inner(_instance: Peri<'d, T>) -> Self {
-        let dma = Self {
+        let mut dma = Self {
+            _instance,
             _phantom: PhantomData,
         };
 
@@ -149,11 +148,11 @@ impl<'d, T: Instance, M: IoMode> Dma<'d, T, M> {
         dma
     }
 
-    pub fn enable(&self) {
+    pub fn enable(&mut self) {
         T::reg().ctrl().modify(|_, w| w.dma_ctrl_en().set_bit());
     }
 
-    pub fn disable(&self) {
+    pub fn disable(&mut self) {
         T::reg().ctrl().modify(|_, w| w.dma_ctrl_en().clear_bit());
     }
 
@@ -161,7 +160,7 @@ impl<'d, T: Instance, M: IoMode> Dma<'d, T, M> {
         T::reg().ctrl().read().dma_ctrl_en().bit_is_set()
     }
 
-    pub fn start(&self) {
+    pub fn start(&mut self) {
         T::reg().ctrl().modify(|_, w| w.dma_ctrl_start().set_bit());
     }
 
@@ -185,7 +184,7 @@ impl<'d, T: Instance, M: IoMode> Dma<'d, T, M> {
         T::reg().ctrl().read().dma_ctrl_busy().bit_is_set()
     }
 
-    pub fn write_descriptor(&self, desc: Descriptor) {
+    pub fn write_descriptor(&mut self, desc: Descriptor) {
         let raw = match desc {
             Descriptor::BaseAddress(addr) => addr,
             Descriptor::Config(config) => config.into(),
@@ -193,7 +192,7 @@ impl<'d, T: Instance, M: IoMode> Dma<'d, T, M> {
         T::reg().desc().write(|w| unsafe { w.bits(raw) });
     }
 
-    pub fn start_transfer_raw(&self, src_addr: u32, dst_addr: u32, config: TransferConfig) {
+    pub fn start_transfer_raw(&mut self, src_addr: u32, dst_addr: u32, config: TransferConfig) {
         self.write_descriptor(Descriptor::BaseAddress(src_addr));
         self.write_descriptor(Descriptor::BaseAddress(dst_addr));
         self.write_descriptor(Descriptor::Config(config));
@@ -201,7 +200,7 @@ impl<'d, T: Instance, M: IoMode> Dma<'d, T, M> {
         T::reg().ctrl().modify(|_, w| w.dma_ctrl_start().set_bit());
     }
 
-    pub fn start_transfer(&self, src_addr: *const u8, dst_addr: *mut u8, len: u32) {
+    pub fn start_transfer(&mut self, src_addr: *const u8, dst_addr: *mut u8, len: u32) {
         let config = TransferConfig::new(
             len,
             false,
@@ -212,8 +211,8 @@ impl<'d, T: Instance, M: IoMode> Dma<'d, T, M> {
         self.start_transfer_raw(src_addr as u32, dst_addr as u32, config);
     }
 
-    /// Blocking transfer not really useful in practice, just for testing at the moment
-    pub fn blocking_transfer(&self, src: &[u8], dst: &mut [u8]) -> Result<(), Error> {
+    /// Blocking transfer not really useful in practice, just for testing at the moment.
+    pub fn blocking_transfer(&mut self, src: &[u8], dst: &mut [u8]) -> Result<(), Error> {
         assert!(src.len() == dst.len());
 
         fence(Ordering::Release);
@@ -234,7 +233,7 @@ impl<'d, T: Instance, M: IoMode> Dma<'d, T, M> {
         res
     }
 
-    /// Acknowledge interrupt
+    /// Acknowledge interrupt.
     ///
     /// # Safety
     /// TODO
@@ -243,31 +242,36 @@ impl<'d, T: Instance, M: IoMode> Dma<'d, T, M> {
     }
 }
 
-/// DMA IO mode
-#[allow(private_bounds)]
-pub trait IoMode: crate::Sealed {}
+trait SealedIoMode {}
 
-/// Blocking DMA
+/// DMA IO mode.
+#[allow(private_bounds)]
+pub trait IoMode: SealedIoMode {}
+
+/// Blocking DMA.
 pub struct Blocking;
-impl crate::Sealed for Blocking {}
+impl SealedIoMode for Blocking {}
 impl IoMode for Blocking {}
 
-/// Async DMA
+/// Async DMA.
 pub struct Async;
-impl crate::Sealed for Async {}
+impl SealedIoMode for Async {}
 impl IoMode for Async {}
 
-/// A valid DMA peripheral
-#[allow(private_bounds)]
-pub trait Instance: crate::Sealed + PeripheralType {
-    type Interrupt: Interrupt;
+trait SealedInstance {
     fn reg() -> &'static crate::pac::dma::RegisterBlock;
 }
 
-impl crate::Sealed for DMA {}
-impl Instance for DMA {
-    type Interrupt = crate::interrupt::typelevel::DMA;
+/// A valid DMA peripheral.
+#[allow(private_bounds)]
+pub trait Instance: SealedInstance + PeripheralType {
+    type Interrupt: Interrupt;
+}
+impl SealedInstance for DMA {
     fn reg() -> &'static crate::pac::dma::RegisterBlock {
         unsafe { &*crate::pac::Dma::ptr() }
     }
+}
+impl Instance for DMA {
+    type Interrupt = crate::interrupt::typelevel::DMA;
 }

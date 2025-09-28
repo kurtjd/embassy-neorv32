@@ -14,7 +14,7 @@ async fn main(_spawner: embassy_executor::Spawner) {
     let mut uart = Uart::new_blocking(p.UART0, 50_000_000, true, false);
 
     // Setup DMA
-    let dma = Dma::new_blocking(p.DMA);
+    let mut dma = Dma::new_blocking(p.DMA);
 
     let src = 0xBAADF00Du32.to_le_bytes();
     let mut dst = 0xDEADBEEFu32.to_le_bytes();

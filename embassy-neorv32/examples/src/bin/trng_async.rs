@@ -20,7 +20,7 @@ async fn main(_spawner: embassy_executor::Spawner) {
     let mut uart = Uart::new_blocking(p.UART0, 50_000_000, true, false);
 
     // Setup async TRNG
-    let trng = Trng::new_async(p.TRNG, Irqs);
+    let mut trng = Trng::new_async(p.TRNG, Irqs);
     if trng.sim_mode() {
         uart.blocking_write(b"Running in simulation so PRNG is used\n");
     }

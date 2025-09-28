@@ -42,18 +42,18 @@ impl From<u8> for ResetCause {
     }
 }
 
-pub struct Wdt<'d, M: LockMode> {
-    reg: &'static crate::pac::wdt::RegisterBlock,
-    _phantom: PhantomData<(&'d (), M)>,
+pub struct Wdt<'d, T: Instance, M: LockMode> {
+    _instance: Peri<'d, T>,
+    _phantom: PhantomData<M>,
 }
 
-impl<'d> Wdt<'d, Unlocked> {
+impl<'d, T: Instance> Wdt<'d, T, Unlocked> {
     /// Returns a new unlocked WDT with timeout set to 24-bit max
     ///
     /// Caller should configure timeout and then enable the WDT
-    pub fn new<T: Instance>(_instance: Peri<'d, T>) -> Self {
+    pub fn new(_instance: Peri<'d, T>) -> Self {
         let wdt = Self {
-            reg: T::reg(),
+            _instance,
             _phantom: PhantomData,
         };
 
@@ -65,7 +65,7 @@ impl<'d> Wdt<'d, Unlocked> {
     /// Enable WDT
     #[inline(always)]
     pub fn enable(&self) {
-        self.reg.ctrl().modify(|_, w| w.wdt_ctrl_en().set_bit());
+        T::reg().ctrl().modify(|_, w| w.wdt_ctrl_en().set_bit());
     }
 
     /// Disable WDT
@@ -73,20 +73,20 @@ impl<'d> Wdt<'d, Unlocked> {
     /// Resets the internal timeout counter to 0
     #[inline(always)]
     pub fn disable(&self) {
-        self.reg.ctrl().modify(|_, w| w.wdt_ctrl_en().clear_bit());
+        T::reg().ctrl().modify(|_, w| w.wdt_ctrl_en().clear_bit());
     }
 
     /// Returns true if WDT is enabled
     #[inline(always)]
     pub fn enabled(&self) -> bool {
-        self.reg.ctrl().read().wdt_ctrl_en().bit_is_set()
+        T::reg().ctrl().read().wdt_ctrl_en().bit_is_set()
     }
 
     /// Sets 24-bit WDT timeout value
     ///
     /// WDT counter is clocked at 1/4096 of CPU clock frequency
     pub fn set_timeout(&self, timeout: u32) {
-        self.reg
+        T::reg()
             .ctrl()
             .modify(|_, w| unsafe { w.wdt_ctrl_timeout().bits(timeout) });
     }
@@ -105,27 +105,27 @@ impl<'d> Wdt<'d, Unlocked> {
     ///
     /// The only way to unlock the WDT is via system reset
     #[must_use]
-    pub fn lock(self) -> Wdt<'d, Locked> {
-        self.reg.ctrl().modify(|_, w| w.wdt_ctrl_lock().set_bit());
+    pub fn lock(self) -> Wdt<'d, T, Locked> {
+        T::reg().ctrl().modify(|_, w| w.wdt_ctrl_lock().set_bit());
         Wdt {
-            reg: self.reg,
+            _instance: self._instance,
             _phantom: PhantomData,
         }
     }
 }
 
-impl<'d, M: LockMode> Wdt<'d, M> {
+impl<'d, T: Instance, M: LockMode> Wdt<'d, T, M> {
     /// Resets WDT timeout counter
     pub fn feed(&self) {
         const PASSWORD: u32 = 0x709D1AB3;
-        self.reg
+        T::reg()
             .reset()
             .write(|w| unsafe { w.wdt_reset().bits(PASSWORD) });
     }
 
     /// Returns the cause of the last hardware reset
     pub fn reset_cause(&self) -> ResetCause {
-        let cause_raw = self.reg.ctrl().read().wdt_ctrl_rcause().bits();
+        let cause_raw = T::reg().ctrl().read().wdt_ctrl_rcause().bits();
         ResetCause::from(cause_raw)
     }
 
@@ -133,42 +133,45 @@ impl<'d, M: LockMode> Wdt<'d, M> {
     pub fn force_hw_reset(&self) {
         // WDT must be enabled for illegal access resets to trigger
         // It also appears that the WDT must be locked as well for incorrect password to trigger reset
-        self.reg
+        T::reg()
             .ctrl()
             .modify(|_, w| w.wdt_ctrl_en().set_bit().wdt_ctrl_lock().set_bit());
 
         // Feed incorrect password to trigger reset
-        self.reg
+        T::reg()
             .reset()
             .write(|w| unsafe { w.wdt_reset().bits(0xDEADBEEF) });
     }
 }
 
+trait SealedLockMode {}
+
 /// WDT lock mode
 #[allow(private_bounds)]
-pub trait LockMode: crate::Sealed {}
+pub trait LockMode: SealedLockMode {}
 
 /// WDT is unlocked and all registers can be written to
 pub struct Unlocked;
-impl crate::Sealed for Unlocked {}
+impl SealedLockMode for Unlocked {}
 impl LockMode for Unlocked {}
 
 /// WDT is locked and certain registers cannot be written to
 ///
 /// Attempting to circumvent the HAL and writing anyway will trigger reset
 pub struct Locked;
-impl crate::Sealed for Locked {}
+impl SealedLockMode for Locked {}
 impl LockMode for Locked {}
 
-/// A valid WDT peripheral
-#[allow(private_bounds)]
-pub trait Instance: crate::Sealed + PeripheralType {
+trait SealedInstance {
     fn reg() -> &'static crate::pac::wdt::RegisterBlock;
 }
 
-impl crate::Sealed for WDT {}
-impl Instance for WDT {
+/// A valid WDT peripheral
+#[allow(private_bounds)]
+pub trait Instance: SealedInstance + PeripheralType {}
+impl SealedInstance for WDT {
     fn reg() -> &'static crate::pac::wdt::RegisterBlock {
         unsafe { &*crate::pac::Wdt::ptr() }
     }
 }
+impl Instance for WDT {}

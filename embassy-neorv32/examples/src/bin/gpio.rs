@@ -9,7 +9,7 @@ async fn main(_spawner: embassy_executor::Spawner) {
     let p = embassy_neorv32::init();
 
     let gpio = Gpio::new_blocking(p.GPIO);
-    let port = gpio.new_port(p.PORT0);
+    let mut port = gpio.new_port(p.PORT0);
 
     loop {
         port.toggle();

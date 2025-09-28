@@ -12,7 +12,7 @@ static PORT_WAKERS: [AtomicWaker; PORT_COUNT] = [const { AtomicWaker::new() }; P
 
 // TODO: Add doc strings after API stabilized
 
-/// GPIO interrupt handler binding
+/// GPIO interrupt handler binding.
 pub struct InterruptHandler<T: Instance> {
     _phantom: PhantomData<T>,
 }
@@ -48,13 +48,15 @@ pub enum IrqType {
     RisingEdge,
 }
 
-pub struct Gpio<'d, M: InputMode> {
-    _phantom: PhantomData<&'d M>,
+pub struct Gpio<'d, T: Instance, M: InputMode> {
+    _instance: Peri<'d, T>,
+    _phantom: PhantomData<M>,
 }
 
-impl<'d> Gpio<'d, Blocking> {
-    pub fn new_blocking<T: Instance>(_instance: Peri<'d, T>) -> Self {
+impl<'d, T: Instance> Gpio<'d, T, Blocking> {
+    pub fn new_blocking(_instance: Peri<'d, T>) -> Self {
         Self {
+            _instance,
             _phantom: PhantomData,
         }
     }
@@ -68,8 +70,8 @@ impl<'d> Gpio<'d, Blocking> {
     }
 }
 
-impl<'d> Gpio<'d, Async> {
-    pub fn new_async<T: Instance>(
+impl<'d, T: Instance> Gpio<'d, T, Async> {
+    pub fn new_async(
         _instance: Peri<'d, T>,
         _irq: impl Binding<T::Interrupt, InterruptHandler<T>> + 'd,
     ) -> Self {
@@ -77,6 +79,7 @@ impl<'d> Gpio<'d, Async> {
         unsafe { T::Interrupt::enable() };
 
         Self {
+            _instance,
             _phantom: PhantomData,
         }
     }
@@ -90,7 +93,7 @@ impl<'d> Gpio<'d, Async> {
     }
 }
 
-impl<'d, M: InputMode> Gpio<'d, M> {
+impl<'d, T: Instance, M: InputMode> Gpio<'d, T, M> {
     pub fn new_output<P: PortInstance>(&self, _instance: Peri<'d, P>) -> Output<'d> {
         Output::new(_instance)
     }
@@ -106,7 +109,7 @@ impl<'d> Port<'d, Blocking> {
         Self::new_inner(_instance)
     }
 
-    pub fn irq_enable(&self, irq_type: IrqType) {
+    pub fn irq_enable(&mut self, irq_type: IrqType) {
         match irq_type {
             IrqType::LowLevel => {
                 self.set_level_trigger();
@@ -129,7 +132,7 @@ impl<'d> Port<'d, Blocking> {
         GPIO::irq_enable(self.portno);
     }
 
-    pub fn irq_disable(&self) {
+    pub fn irq_disable(&mut self) {
         GPIO::irq_disable(self.portno);
     }
 }
@@ -139,7 +142,7 @@ impl<'d> Port<'d, Async> {
         Self::new_inner(_instance)
     }
 
-    async fn wait(&self) {
+    async fn wait(&mut self) {
         GPIO::irq_enable(self.portno);
 
         poll_fn(|cx| {
@@ -155,31 +158,31 @@ impl<'d> Port<'d, Async> {
         .await
     }
 
-    pub async fn wait_for_low(&self) {
+    pub async fn wait_for_low(&mut self) {
         self.set_level_trigger();
         self.set_trigger_polarity_low();
         self.wait().await
     }
 
-    pub async fn wait_for_high(&self) {
+    pub async fn wait_for_high(&mut self) {
         self.set_level_trigger();
         self.set_trigger_polarity_high();
         self.wait().await
     }
 
-    pub async fn wait_for_falling_edge(&self) {
+    pub async fn wait_for_falling_edge(&mut self) {
         self.set_edge_trigger();
         self.set_trigger_polarity_low();
         self.wait().await
     }
 
-    pub async fn wait_for_rising_edge(&self) {
+    pub async fn wait_for_rising_edge(&mut self) {
         self.set_edge_trigger();
         self.set_trigger_polarity_high();
         self.wait().await
     }
 
-    pub async fn wait_for_any_edge(&self) {
+    pub async fn wait_for_any_edge(&mut self) {
         if self.is_low() {
             self.wait_for_rising_edge().await
         } else {
@@ -196,19 +199,19 @@ impl<'d, M: InputMode> Port<'d, M> {
         }
     }
 
-    fn set_level_trigger(&self) {
+    fn set_level_trigger(&mut self) {
         GPIO::set_level_trigger(self.portno);
     }
 
-    fn set_edge_trigger(&self) {
+    fn set_edge_trigger(&mut self) {
         GPIO::set_edge_trigger(self.portno);
     }
 
-    fn set_trigger_polarity_low(&self) {
+    fn set_trigger_polarity_low(&mut self) {
         GPIO::set_trigger_polarity_low(self.portno);
     }
 
-    fn set_trigger_polarity_high(&self) {
+    fn set_trigger_polarity_high(&mut self) {
         GPIO::set_trigger_polarity_high(self.portno);
     }
 
@@ -238,7 +241,7 @@ impl<'d, M: InputMode> Port<'d, M> {
         !self.is_low()
     }
 
-    pub fn toggle(&self) {
+    pub fn toggle(&mut self) {
         if self.is_set_low() {
             self.set_high();
         } else {
@@ -246,7 +249,7 @@ impl<'d, M: InputMode> Port<'d, M> {
         }
     }
 
-    pub fn set(&self, val: bool) {
+    pub fn set(&mut self, val: bool) {
         if val {
             self.set_high();
         } else {
@@ -254,11 +257,11 @@ impl<'d, M: InputMode> Port<'d, M> {
         }
     }
 
-    pub fn set_low(&self) {
+    pub fn set_low(&mut self) {
         GPIO::set_low(self.portno);
     }
 
-    pub fn set_high(&self) {
+    pub fn set_high(&mut self) {
         GPIO::set_high(self.portno);
     }
 
@@ -294,23 +297,23 @@ impl<'d> Input<'d, Async> {
         }
     }
 
-    pub async fn wait_for_low(&self) {
+    pub async fn wait_for_low(&mut self) {
         self.port.wait_for_low().await
     }
 
-    pub async fn wait_for_high(&self) {
+    pub async fn wait_for_high(&mut self) {
         self.port.wait_for_high().await
     }
 
-    pub async fn wait_for_falling_edge(&self) {
+    pub async fn wait_for_falling_edge(&mut self) {
         self.port.wait_for_falling_edge().await
     }
 
-    pub async fn wait_for_rising_edge(&self) {
+    pub async fn wait_for_rising_edge(&mut self) {
         self.port.wait_for_rising_edge().await
     }
 
-    pub async fn wait_for_any_edge(&self) {
+    pub async fn wait_for_any_edge(&mut self) {
         self.port.wait_for_any_edge().await
     }
 }
@@ -337,19 +340,19 @@ impl<'d> Output<'d> {
         }
     }
 
-    pub fn toggle(&self) {
+    pub fn toggle(&mut self) {
         self.port.toggle();
     }
 
-    pub fn set(&self, val: bool) {
+    pub fn set(&mut self, val: bool) {
         self.port.set(val);
     }
 
-    pub fn set_low(&self) {
+    pub fn set_low(&mut self) {
         self.port.set_low();
     }
 
-    pub fn set_high(&self) {
+    pub fn set_high(&mut self) {
         self.port.set_high();
     }
 
@@ -364,30 +367,29 @@ impl<'d> Output<'d> {
 
 // TODO: Impl embedded-hal traits
 
+trait SealedInputMode {}
+
 /// Port Input mode
 #[allow(private_bounds)]
-pub trait InputMode: crate::Sealed {}
+pub trait InputMode: SealedInputMode {}
 
 /// Blocking Input
 pub struct Blocking;
-impl crate::Sealed for Blocking {}
+impl SealedInputMode for Blocking {}
 impl InputMode for Blocking {}
 
 /// Async Input
 pub struct Async;
-impl crate::Sealed for Async {}
+impl SealedInputMode for Async {}
 impl InputMode for Async {}
 
-/// A valid GPIO peripheral
-#[allow(private_bounds)]
-pub trait Instance: crate::Sealed + PeripheralType {
-    type Interrupt: Interrupt;
+trait SealedInstance {
     fn reg() -> &'static crate::pac::gpio::RegisterBlock;
 
     fn is_low(portno: u32) -> bool;
-    fn is_high(portno: u32) -> bool;
+    fn _is_high(portno: u32) -> bool;
     fn is_set_low(portno: u32) -> bool;
-    fn is_set_high(portno: u32) -> bool;
+    fn _is_set_high(portno: u32) -> bool;
 
     fn set_low(portno: u32);
     fn set_high(portno: u32);
@@ -400,15 +402,18 @@ pub trait Instance: crate::Sealed + PeripheralType {
     fn irq_enable(portno: u32);
     fn irq_disable(portno: u32);
     fn irq_enabled(portno: u32) -> bool;
-    fn irq_pending(portno: u32) -> bool;
-    fn irq_ack(portno: u32);
+    fn _irq_pending(portno: u32) -> bool;
+    fn _irq_ack(portno: u32);
+}
+
+/// A valid GPIO peripheral.
+#[allow(private_bounds)]
+pub trait Instance: SealedInstance + PeripheralType {
+    type Interrupt: Interrupt;
 }
 
 // TODO: Probably more efficient to not use CS here and let Port do it to batch together
-impl crate::Sealed for GPIO {}
-impl Instance for GPIO {
-    type Interrupt = crate::interrupt::typelevel::GPIO;
-
+impl SealedInstance for GPIO {
     fn reg() -> &'static crate::pac::gpio::RegisterBlock {
         unsafe { &*crate::pac::Gpio::ptr() }
     }
@@ -417,7 +422,7 @@ impl Instance for GPIO {
         (Self::reg().port_in().read().bits() & (1 << portno)) == 0
     }
 
-    fn is_high(portno: u32) -> bool {
+    fn _is_high(portno: u32) -> bool {
         !Self::is_low(portno)
     }
 
@@ -425,7 +430,7 @@ impl Instance for GPIO {
         (Self::reg().port_out().read().bits() & (1 << portno)) == 0
     }
 
-    fn is_set_high(portno: u32) -> bool {
+    fn _is_set_high(portno: u32) -> bool {
         !Self::is_set_low(portno)
     }
 
@@ -497,11 +502,11 @@ impl Instance for GPIO {
         (Self::reg().irq_enable().read().bits() & (1 << portno)) != 0
     }
 
-    fn irq_pending(portno: u32) -> bool {
+    fn _irq_pending(portno: u32) -> bool {
         (Self::reg().irq_pending().read().bits() & (1 << portno)) != 0
     }
 
-    fn irq_ack(portno: u32) {
+    fn _irq_ack(portno: u32) {
         critical_section::with(|_| {
             Self::reg()
                 .irq_pending()
@@ -509,15 +514,20 @@ impl Instance for GPIO {
         });
     }
 }
+impl Instance for GPIO {
+    type Interrupt = crate::interrupt::typelevel::GPIO;
+}
+
+trait SealedPortInstance {}
 
 /// A valid PORT peripheral
 #[allow(private_bounds)]
-pub trait PortInstance: crate::Sealed + PeripheralType {
+pub trait PortInstance: SealedPortInstance + PeripheralType {
     const PORT: u32;
 }
 
 // TODO: Macro this and impl for all 32 ports
-impl crate::Sealed for crate::peripherals::PORT0 {}
+impl SealedPortInstance for crate::peripherals::PORT0 {}
 impl PortInstance for crate::peripherals::PORT0 {
     const PORT: u32 = 0;
 }

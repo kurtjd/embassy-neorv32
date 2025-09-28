@@ -80,7 +80,8 @@ impl From<u8> for Prescaler {
 
 /// General Purpose Timer (GPTMR) Driver
 pub struct Gptmr<'d, T: Instance, M: WaitMode> {
-    _phantom: PhantomData<&'d (T, M)>,
+    _instance: Peri<'d, T>,
+    _phantom: PhantomData<M>,
 }
 
 impl<'d, T: Instance> Gptmr<'d, T, Blocking> {
@@ -100,7 +101,7 @@ impl<'d, T: Instance> Gptmr<'d, T, Async> {
         Self::new_inner(_instance, psc)
     }
 
-    pub async fn wait(&self) {
+    pub async fn wait(&mut self) {
         unsafe {
             T::Interrupt::enable();
         }
@@ -123,7 +124,8 @@ impl<'d, T: Instance> Gptmr<'d, T, Async> {
 
 impl<'d, T: Instance, M: WaitMode> Gptmr<'d, T, M> {
     fn new_inner(_instance: Peri<'d, T>, psc: Prescaler) -> Self {
-        let gptmr = Self {
+        let mut gptmr = Self {
+            _instance,
             _phantom: PhantomData,
         };
 
@@ -133,7 +135,7 @@ impl<'d, T: Instance, M: WaitMode> Gptmr<'d, T, M> {
 
     /// Set the GPTMR prescaler
     #[inline(always)]
-    pub fn set_prescaler(&self, psc: Prescaler) {
+    pub fn set_prescaler(&mut self, psc: Prescaler) {
         T::reg()
             .ctrl()
             .modify(|_, w| unsafe { w.gptmr_ctrl_prsc().bits(psc.into()) });
@@ -147,13 +149,13 @@ impl<'d, T: Instance, M: WaitMode> Gptmr<'d, T, M> {
 
     /// Enable the GPTMR
     #[inline(always)]
-    pub fn enable(&self) {
+    pub fn enable(&mut self) {
         T::reg().ctrl().modify(|_, w| w.gptmr_ctrl_en().set_bit());
     }
 
     /// Disable the GPTMR
     #[inline(always)]
-    pub fn disable(&self) {
+    pub fn disable(&mut self) {
         T::reg().ctrl().modify(|_, w| w.gptmr_ctrl_en().clear_bit());
     }
 
@@ -187,14 +189,14 @@ impl<'d, T: Instance, M: WaitMode> Gptmr<'d, T, M> {
     ///
     /// However, interrupt must be acknowleged via [Self::irq_clear]
     #[inline(always)]
-    pub fn set_threshold(&self, threshold_ticks: u32) {
+    pub fn set_threshold(&mut self, threshold_ticks: u32) {
         T::reg()
             .thres()
             .write(|w| unsafe { w.bits(threshold_ticks) });
     }
 
     /// Wait for GPTMR counter to reach its threshold, blocking in the meantime
-    pub fn blocking_wait(&self) {
+    pub fn blocking_wait(&mut self) {
         while !self.irq_pending() {}
         unsafe { Self::irq_clear() };
     }
@@ -217,31 +219,36 @@ impl<'d, T: Instance, M: WaitMode> Gptmr<'d, T, M> {
     }
 }
 
+trait SealedWaitMode {}
+
 /// GPTMR Wait mode
 #[allow(private_bounds)]
-pub trait WaitMode: crate::Sealed {}
+pub trait WaitMode: SealedWaitMode {}
 
 /// Blocking TRNG
 pub struct Blocking;
-impl crate::Sealed for Blocking {}
+impl SealedWaitMode for Blocking {}
 impl WaitMode for Blocking {}
 
 /// Async TRNG
 pub struct Async;
-impl crate::Sealed for Async {}
+impl SealedWaitMode for Async {}
 impl WaitMode for Async {}
 
-/// A valid GPTMR peripheral
-#[allow(private_bounds)]
-pub trait Instance: crate::Sealed + PeripheralType {
-    type Interrupt: Interrupt;
+trait SealedInstance {
     fn reg() -> &'static crate::pac::gptmr::RegisterBlock;
 }
 
-impl crate::Sealed for GPTMR {}
-impl Instance for GPTMR {
-    type Interrupt = crate::interrupt::typelevel::GPTMR;
+/// A valid GPTMR peripheral
+#[allow(private_bounds)]
+pub trait Instance: SealedInstance + PeripheralType {
+    type Interrupt: Interrupt;
+}
+impl SealedInstance for GPTMR {
     fn reg() -> &'static crate::pac::gptmr::RegisterBlock {
         unsafe { &*crate::pac::Gptmr::ptr() }
     }
+}
+impl Instance for GPTMR {
+    type Interrupt = crate::interrupt::typelevel::GPTMR;
 }

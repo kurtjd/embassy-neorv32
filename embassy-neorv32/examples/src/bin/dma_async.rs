@@ -15,18 +15,21 @@ bind_interrupts!(struct Irqs {
     DMA => dma::InterruptHandler<peripherals::DMA>;
 });
 
-type UartMutex = Mutex<CriticalSectionRawMutex, Uart<'static, uart::Blocking>>;
+type UartMutex = Mutex<CriticalSectionRawMutex, Uart<'static, peripherals::UART0, uart::Blocking>>;
 static UART: OnceLock<UartMutex> = OnceLock::new();
 
 #[embassy_executor::task]
-async fn dma_transfer(dma: Dma<'static, peripherals::DMA, dma::Async>, uart: &'static UartMutex) {
+async fn dma_transfer(
+    mut dma: Dma<'static, peripherals::DMA, dma::Async>,
+    uart: &'static UartMutex,
+) {
     loop {
         let src = [42; 2048];
         let mut dst = [69; 2048];
 
         let res = dma.transfer(&src, &mut dst).await;
         {
-            let uart = uart.lock().await;
+            let mut uart = uart.lock().await;
             if res.is_ok() && src[0] == dst[0] {
                 uart.blocking_write(b"DMA transfer complete\n");
             } else {

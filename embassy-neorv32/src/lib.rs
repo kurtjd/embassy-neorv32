@@ -41,7 +41,3 @@ pub fn init() -> Peripherals {
 
     p
 }
-
-// Pattern to prevent traits that need to be publicly callable but not implementable
-// These traits should depend on `crate::Sealed`
-trait Sealed {}

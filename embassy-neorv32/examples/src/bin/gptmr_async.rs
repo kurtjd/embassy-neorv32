@@ -15,10 +15,10 @@ async fn main(_spawner: embassy_executor::Spawner) {
     let p = embassy_neorv32::init();
 
     // Setup UART for display purposes
-    let uart = Uart::new_blocking(p.UART0, 50_000_000, true, false);
+    let mut uart = Uart::new_blocking(p.UART0, 50_000_000, true, false);
 
     // Setup GPTMR
-    let gptmr = Gptmr::new_async(p.GPTMR, Prescaler::Psc64, Irqs);
+    let mut gptmr = Gptmr::new_async(p.GPTMR, Prescaler::Psc64, Irqs);
     gptmr.set_threshold(1000);
     gptmr.enable();
 

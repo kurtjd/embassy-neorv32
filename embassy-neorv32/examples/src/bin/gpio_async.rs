@@ -11,7 +11,7 @@ bind_interrupts!(struct Irqs {
 });
 
 #[embassy_executor::task]
-async fn input_task(input_pin: gpio::Input<'static, gpio::Async>) {
+async fn input_task(mut input_pin: gpio::Input<'static, gpio::Async>) {
     loop {
         input_pin.wait_for_falling_edge().await;
         // Do something
@@ -24,7 +24,7 @@ async fn main(spawner: embassy_executor::Spawner) {
 
     let gpio = Gpio::new_async(p.GPIO, Irqs);
     let port = gpio.new_port(p.PORT0);
-    let (input_pin, output_pin) = port.split();
+    let (input_pin, mut output_pin) = port.split();
 
     spawner.must_spawn(input_task(input_pin));
     loop {
