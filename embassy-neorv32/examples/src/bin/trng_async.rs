@@ -4,12 +4,13 @@ use core::fmt::Write;
 use embassy_neorv32::bind_interrupts;
 use embassy_neorv32::peripherals;
 use embassy_neorv32::trng::{self, Trng};
-use embassy_neorv32::uart::Uart;
+use embassy_neorv32::uart::{self, Uart};
 use embassy_time::Timer;
 use panic_halt as _;
 
 bind_interrupts!(struct Irqs {
     TRNG => trng::InterruptHandler<peripherals::TRNG>;
+    UART0 => uart::InterruptHandler<peripherals::UART0>;
 });
 
 #[embassy_executor::main]
@@ -17,12 +18,12 @@ async fn main(_spawner: embassy_executor::Spawner) {
     let p = embassy_neorv32::init();
 
     // Setup UART for display purposes
-    let mut uart = Uart::new_blocking(p.UART0, 50_000_000, true, false);
+    let mut uart = Uart::new_async_tx(p.UART0, 19200, true, false, Irqs);
 
     // Setup async TRNG
     let mut trng = Trng::new_async(p.TRNG, Irqs);
     if trng.sim_mode() {
-        uart.blocking_write(b"Running in simulation so PRNG is used\n");
+        uart.write(b"Running in simulation so PRNG is used\n").await;
     }
     let fifo_depth = trng.fifo_depth();
     writeln!(&mut uart, "TRNG FIFO depth: {fifo_depth}").unwrap();

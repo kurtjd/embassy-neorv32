@@ -1,11 +1,17 @@
 #![no_std]
 #![no_main]
+use embassy_neorv32::bind_interrupts;
+use embassy_neorv32::peripherals;
 use embassy_neorv32::uart::{self, Uart, UartTx};
 use panic_halt as _;
 
+bind_interrupts!(struct Irqs {
+    UART0 => uart::InterruptHandler<peripherals::UART0>;
+});
+
 // Ported to Rust from:
 // https://github.com/stnolting/neorv32/blob/main/sw/lib/source/neorv32_aux.c#L605
-fn print_logo(uart: &mut UartTx<'static, uart::Blocking>) {
+async fn print_logo(uart: &mut UartTx<'static, uart::Async>) {
     use core::mem::size_of_val;
 
     const LOGO: [[u16; 7]; 9] = [
@@ -21,7 +27,7 @@ fn print_logo(uart: &mut UartTx<'static, uart::Blocking>) {
     ];
 
     for row in LOGO.iter().take(size_of_val(&LOGO) / size_of_val(&LOGO[0])) {
-        uart.blocking_write_byte(b'\n');
+        uart.write_byte(b'\n').await;
         for val in row
             .iter()
             .take(size_of_val(&LOGO[0]) / size_of_val(&LOGO[0][0]))
@@ -29,22 +35,22 @@ fn print_logo(uart: &mut UartTx<'static, uart::Blocking>) {
             let mut tmp = *val;
             for _ in 0..(size_of_val(&LOGO[0][0]) * 8) {
                 let c = if (tmp as i16) < 0 { b'#' } else { b' ' };
-                uart.blocking_write_byte(c);
+                uart.write_byte(c).await;
                 tmp <<= 1;
             }
         }
     }
-    uart.blocking_write_byte(b'\n');
+    uart.write_byte(b'\n').await;
 }
 
 #[embassy_executor::main]
 async fn main(_spawner: embassy_executor::Spawner) {
     let p = embassy_neorv32::init();
 
-    // Setup UART in simulation mode with no HW flow control and a arbitrary baud rate (since sim immediately prints)
-    let mut uart = Uart::new_blocking_tx(p.UART0, 19200, true, false);
-    print_logo(&mut uart);
+    // Setup UART in simulation mode with no HW flow control and arbitrary baud rate (since sim is immediately prints)
+    let mut uart = Uart::new_async_tx(p.UART0, 19200, true, false, Irqs);
+    print_logo(&mut uart).await;
 
     // Note: '\n' seems necessary for UART writes for sim to flush output
-    uart.blocking_write(b"Hello world! :)\n");
+    uart.write(b"Hello world! :)\n").await;
 }

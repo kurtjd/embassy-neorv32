@@ -3,11 +3,12 @@
 use embassy_neorv32::bind_interrupts;
 use embassy_neorv32::gptmr::{self, Gptmr, Prescaler};
 use embassy_neorv32::peripherals;
-use embassy_neorv32::uart::Uart;
+use embassy_neorv32::uart::{self, Uart};
 use panic_halt as _;
 
 bind_interrupts!(struct Irqs {
     GPTMR => gptmr::InterruptHandler<peripherals::GPTMR>;
+    UART0 => uart::InterruptHandler<peripherals::UART0>;
 });
 
 #[embassy_executor::main]
@@ -15,7 +16,7 @@ async fn main(_spawner: embassy_executor::Spawner) {
     let p = embassy_neorv32::init();
 
     // Setup UART for display purposes
-    let mut uart = Uart::new_blocking(p.UART0, 50_000_000, true, false);
+    let mut uart = Uart::new_async_tx(p.UART0, 19200, true, false, Irqs);
 
     // Setup GPTMR
     let mut gptmr = Gptmr::new_async(p.GPTMR, Prescaler::Psc64, Irqs);
@@ -23,7 +24,7 @@ async fn main(_spawner: embassy_executor::Spawner) {
     gptmr.enable();
 
     loop {
-        uart.blocking_write(b"Waiting for timer to expire...\n");
+        uart.write(b"Waiting for timer to expire...\n").await;
         gptmr.wait().await;
     }
 }
