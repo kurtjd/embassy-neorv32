@@ -32,8 +32,8 @@ fn print_logo(uart: &mut UartTx<'static, uart::Blocking>) {
     uart.blocking_write_byte(b'\n');
 }
 
-#[embassy_executor::main]
-async fn main(_spawner: embassy_executor::Spawner) {
+#[riscv_rt::entry]
+fn main() -> ! {
     let p = embassy_neorv32::init();
 
     // Setup UART in simulation mode with no HW flow control and a arbitrary baud rate (since sim immediately prints)
@@ -42,4 +42,8 @@ async fn main(_spawner: embassy_executor::Spawner) {
 
     // Note: '\n' seems necessary for UART writes for sim to flush output
     uart.blocking_write(b"Hello world! :)\n");
+
+    loop {
+        riscv::asm::wfi();
+    }
 }

@@ -1,0 +1,15 @@
+[target.riscv32i-unknown-none-elf]
+runner = "./../run-sim"
+
+rustflags = [
+    "-C",
+    "link-arg=-Tmemory.x",
+    "-C",
+    "link-arg=-Tlink.x",
+    "-C",
+    "link-arg=--nmagic",
+]
+
+# neorv32 supports quite a few ISA extensions but good for dev to keep it minimal
+[build]
+target = "riscv32i-unknown-none-elf"

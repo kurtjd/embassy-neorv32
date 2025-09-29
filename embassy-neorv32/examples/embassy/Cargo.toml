@@ -1,7 +1,7 @@
 [workspace]
 
 [package]
-name = "neorv32-examples"
+name = "neorv32-embassy-examples"
 version = "0.1.0"
 edition = "2024"
 
@@ -10,7 +10,7 @@ embassy-executor = { version = "0.9.1", features = [
     "arch-riscv32",
     "executor-thread",
 ] }
-embassy-neorv32 = { path = "../" }
+embassy-neorv32 = { path = "../../" }
 # Note: CLINT MTIMER always runs at CPU freq, thus this needs to match CPU FREQ
 # But CPU freq is configurable, so defer tick rate choice to binary
 embassy-time = { version = "0.5.0", features = ["tick-hz-100_000_000"] }

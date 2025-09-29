@@ -24,6 +24,7 @@ mod chip {
 pub use chip::pac;
 pub use chip::{Peripherals, interrupts::*, peripherals};
 
+/// Initialize the HAL and enable interrupts globally.
 pub fn init() -> Peripherals {
     // Attempt to take first so we panic before doing anything else
     let p = Peripherals::take();
@@ -33,4 +34,15 @@ pub fn init() -> Peripherals {
     unsafe { riscv::interrupt::enable() };
 
     p
+}
+
+/// Simple busy-loop delay.
+///
+/// Mainly just here as a placeholder currently for delaying in riscvrt examples.
+pub fn delay_us(us: u64) {
+    let start = riscv::register::mcycle::read64();
+    let fclk = sysinfo::SysInfo::clock_freq() as u64;
+    let cycles = us.saturating_mul(fclk) / 1_000_000;
+    let end = start + cycles;
+    while riscv::register::mcycle::read64() < end {}
 }

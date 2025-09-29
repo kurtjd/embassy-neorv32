@@ -6,8 +6,8 @@ use embassy_neorv32::dma::Dma;
 use embassy_neorv32::uart::Uart;
 use panic_halt as _;
 
-#[embassy_executor::main]
-async fn main(_spawner: embassy_executor::Spawner) {
+#[riscv_rt::entry]
+fn main() -> ! {
     let p = embassy_neorv32::init();
 
     // Setup UART just for printing DMA state
@@ -28,5 +28,9 @@ async fn main(_spawner: embassy_executor::Spawner) {
         writeln!(&mut uart, "Dst: 0x{:08X}", u32::from_le_bytes(dst)).unwrap();
     } else {
         uart.blocking_write(b"DMA transfer failed!\n");
+    }
+
+    loop {
+        riscv::asm::wfi();
     }
 }
