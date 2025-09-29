@@ -12,8 +12,6 @@ bind_interrupts!(struct Irqs {
 // Ported to Rust from:
 // https://github.com/stnolting/neorv32/blob/main/sw/lib/source/neorv32_aux.c#L605
 async fn print_logo(uart: &mut UartTx<'static, uart::Async>) {
-    use core::mem::size_of_val;
-
     const LOGO: [[u16; 7]; 9] = [
         [0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0300, 0xc630],
         [0x60c7, 0xfc7f, 0x87f8, 0xc0c7, 0xf87f, 0x8303, 0xfffc],
@@ -26,14 +24,11 @@ async fn print_logo(uart: &mut UartTx<'static, uart::Async>) {
         [0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0300, 0xc630],
     ];
 
-    for row in LOGO.iter().take(size_of_val(&LOGO) / size_of_val(&LOGO[0])) {
+    for row in LOGO {
         uart.write_byte(b'\n').await;
-        for val in row
-            .iter()
-            .take(size_of_val(&LOGO[0]) / size_of_val(&LOGO[0][0]))
-        {
-            let mut tmp = *val;
-            for _ in 0..(size_of_val(&LOGO[0][0]) * 8) {
+        for val in row {
+            let mut tmp = val;
+            for _ in 0..16 {
                 let c = if (tmp as i16) < 0 { b'#' } else { b' ' };
                 uart.write_byte(c).await;
                 tmp <<= 1;

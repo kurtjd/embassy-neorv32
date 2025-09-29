@@ -6,8 +6,6 @@ use panic_halt as _;
 // Ported to Rust from:
 // https://github.com/stnolting/neorv32/blob/main/sw/lib/source/neorv32_aux.c#L605
 fn print_logo(uart: &mut UartTx<'static, uart::Blocking>) {
-    use core::mem::size_of_val;
-
     const LOGO: [[u16; 7]; 9] = [
         [0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0300, 0xc630],
         [0x60c7, 0xfc7f, 0x87f8, 0xc0c7, 0xf87f, 0x8303, 0xfffc],
@@ -20,14 +18,11 @@ fn print_logo(uart: &mut UartTx<'static, uart::Blocking>) {
         [0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0300, 0xc630],
     ];
 
-    for row in LOGO.iter().take(size_of_val(&LOGO) / size_of_val(&LOGO[0])) {
+    for row in LOGO {
         uart.blocking_write_byte(b'\n');
-        for val in row
-            .iter()
-            .take(size_of_val(&LOGO[0]) / size_of_val(&LOGO[0][0]))
-        {
-            let mut tmp = *val;
-            for _ in 0..(size_of_val(&LOGO[0][0]) * 8) {
+        for val in row {
+            let mut tmp = val;
+            for _ in 0..16 {
                 let c = if (tmp as i16) < 0 { b'#' } else { b' ' };
                 uart.blocking_write_byte(c);
                 tmp <<= 1;
