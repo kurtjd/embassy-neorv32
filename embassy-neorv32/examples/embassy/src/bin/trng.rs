@@ -29,7 +29,8 @@ async fn main(_spawner: embassy_executor::Spawner) {
     writeln!(&mut uart, "TRNG FIFO depth: {fifo_depth}").unwrap();
 
     loop {
-        let mut buf = [0; 8];
+        // Make buffer slightly large to ensure interrupt is triggered
+        let mut buf = [0; 32];
         trng.read(&mut buf).await;
 
         // BE vs LE arbitrary here

@@ -1,5 +1,6 @@
 // TODO: Really rough draft, definitely needs revisiting (and doc strings)
 //! Direct Memory Access (DMA)
+use crate::enable_periph_irq;
 use crate::interrupt::typelevel::{Binding, Handler, Interrupt};
 use crate::peripherals::DMA;
 use core::future::poll_fn;
@@ -16,9 +17,9 @@ pub struct InterruptHandler<T: Instance> {
 
 impl<T: Instance> Handler<T::Interrupt> for InterruptHandler<T> {
     unsafe fn on_interrupt() {
-        // If we ack IRQ here, that clears DONE bit and no way to check in waker
-        // So instead disable to prevent storm and ACK and re-enable in waker
-        // Could use atomic flag? Not sure what the best approach is...
+        // If we ack IRQ here, that clears DONE and ERROR bits thus no way to check in waker
+        // So instead disable here to prevent storm then ACK and re-enable in waker
+        // Could use static atomic bools? Not sure what the best approach is...
         T::Interrupt::disable();
         T::waker().wake();
     }
@@ -85,21 +86,33 @@ pub enum Descriptor {
 }
 
 /// Direct Memory Access (DMA) Driver.
-pub struct Dma<'d, T: Instance, M: IoMode> {
-    _instance: Peri<'d, T>,
-    _phantom: PhantomData<M>,
+pub struct Dma<'d, M: IoMode> {
+    reg: &'static crate::pac::dma::RegisterBlock,
+    waker: &'static AtomicWaker,
+    _phantom: PhantomData<&'d M>,
 }
 
-impl<'d, T: Instance> Dma<'d, T, Blocking> {
+impl<'d> Dma<'d, Blocking> {
     /// Returns a new instance of a blocking DMA and enables it.
-    pub fn new_blocking(_instance: Peri<'d, T>) -> Self {
+    pub fn new_blocking<T: Instance>(_instance: Peri<'d, T>) -> Self {
         Self::new_inner(_instance)
+    }
+
+    /// Acknowledge interrupt.
+    ///
+    /// Does not take [&Self] for ease of use in IRQ handlers.
+    ///
+    /// # Safety
+    /// Async users should **never** call this manually.
+    /// Blocking users should ensure correctness.
+    pub unsafe fn irq_ack() {
+        DMA::reg().ctrl().modify(|_, w| w.dma_ctrl_ack().set_bit());
     }
 }
 
-impl<'d, T: Instance> Dma<'d, T, Async> {
+impl<'d> Dma<'d, Async> {
     /// Returns a new instance of an async DMA and enables it.
-    pub fn new_async(
+    pub fn new_async<T: Instance>(
         _instance: Peri<'d, T>,
         _irq: impl Binding<T::Interrupt, InterruptHandler<T>> + 'd,
     ) -> Self {
@@ -114,19 +127,20 @@ impl<'d, T: Instance> Dma<'d, T, Async> {
         self.start_transfer(src.as_ptr(), dst.as_mut_ptr(), src.len() as u32);
 
         poll_fn(|cx| {
-            T::waker().register(cx.waker());
+            self.waker.register(cx.waker());
             let p = if self.transfer_complete() {
                 Poll::Ready(Ok(()))
             } else if self.bus_error() {
                 Poll::Ready(Err(Error::BusError))
             } else {
-                unsafe { T::Interrupt::enable() }
+                unsafe { enable_periph_irq!(DMA) }
                 Poll::Pending
             };
 
+            // Flush the cache and ack interrupt only if transfer has completed or errored
             if p.is_ready() {
                 fence(Ordering::Acquire);
-                unsafe { Self::irq_ack() }
+                self.reg.ctrl().modify(|_, w| w.dma_ctrl_ack().set_bit());
             }
 
             p
@@ -135,10 +149,11 @@ impl<'d, T: Instance> Dma<'d, T, Async> {
     }
 }
 
-impl<'d, T: Instance, M: IoMode> Dma<'d, T, M> {
-    fn new_inner(_instance: Peri<'d, T>) -> Self {
+impl<'d, M: IoMode> Dma<'d, M> {
+    fn new_inner<T: Instance>(_instance: Peri<'d, T>) -> Self {
         let mut dma = Self {
-            _instance,
+            reg: T::reg(),
+            waker: T::waker(),
             _phantom: PhantomData,
         };
 
@@ -147,39 +162,39 @@ impl<'d, T: Instance, M: IoMode> Dma<'d, T, M> {
     }
 
     pub fn enable(&mut self) {
-        T::reg().ctrl().modify(|_, w| w.dma_ctrl_en().set_bit());
+        self.reg.ctrl().modify(|_, w| w.dma_ctrl_en().set_bit());
     }
 
     pub fn disable(&mut self) {
-        T::reg().ctrl().modify(|_, w| w.dma_ctrl_en().clear_bit());
+        self.reg.ctrl().modify(|_, w| w.dma_ctrl_en().clear_bit());
     }
 
     pub fn enabled(&self) -> bool {
-        T::reg().ctrl().read().dma_ctrl_en().bit_is_set()
+        self.reg.ctrl().read().dma_ctrl_en().bit_is_set()
     }
 
     pub fn start(&mut self) {
-        T::reg().ctrl().modify(|_, w| w.dma_ctrl_start().set_bit());
+        self.reg.ctrl().modify(|_, w| w.dma_ctrl_start().set_bit());
     }
 
     pub fn fifo_empty(&self) -> bool {
-        T::reg().ctrl().read().dma_ctrl_dempty().bit_is_set()
+        self.reg.ctrl().read().dma_ctrl_dempty().bit_is_set()
     }
 
     pub fn fifo_full(&self) -> bool {
-        T::reg().ctrl().read().dma_ctrl_dfull().bit_is_set()
+        self.reg.ctrl().read().dma_ctrl_dfull().bit_is_set()
     }
 
     pub fn bus_error(&self) -> bool {
-        T::reg().ctrl().read().dma_ctrl_error().bit_is_set()
+        self.reg.ctrl().read().dma_ctrl_error().bit_is_set()
     }
 
     pub fn transfer_complete(&self) -> bool {
-        T::reg().ctrl().read().dma_ctrl_done().bit_is_set()
+        self.reg.ctrl().read().dma_ctrl_done().bit_is_set()
     }
 
     pub fn busy(&self) -> bool {
-        T::reg().ctrl().read().dma_ctrl_busy().bit_is_set()
+        self.reg.ctrl().read().dma_ctrl_busy().bit_is_set()
     }
 
     pub fn write_descriptor(&mut self, desc: Descriptor) {
@@ -187,15 +202,25 @@ impl<'d, T: Instance, M: IoMode> Dma<'d, T, M> {
             Descriptor::BaseAddress(addr) => addr,
             Descriptor::Config(config) => config.into(),
         };
-        T::reg().desc().write(|w| unsafe { w.bits(raw) });
+        self.reg.desc().write(|w| unsafe { w.bits(raw) });
     }
 
     pub fn start_transfer_raw(&mut self, src_addr: u32, dst_addr: u32, config: TransferConfig) {
-        self.write_descriptor(Descriptor::BaseAddress(src_addr));
-        self.write_descriptor(Descriptor::BaseAddress(dst_addr));
-        self.write_descriptor(Descriptor::Config(config));
+        let descriptors = [
+            Descriptor::BaseAddress(src_addr),
+            Descriptor::BaseAddress(dst_addr),
+            Descriptor::Config(config),
+        ];
 
-        T::reg().ctrl().modify(|_, w| w.dma_ctrl_start().set_bit());
+        for desc in descriptors {
+            // In normal use cases of the HAL, this should never block
+            // Mainly here in case someone goes behind the HAL's back and writes a non-complete descriptor
+            // Other options are to just overwrite or return error, but blocking seems best choice
+            while self.fifo_full() {}
+            self.write_descriptor(desc);
+        }
+
+        self.reg.ctrl().modify(|_, w| w.dma_ctrl_start().set_bit());
     }
 
     pub fn start_transfer(&mut self, src_addr: *const u8, dst_addr: *mut u8, len: u32) {
@@ -206,6 +231,7 @@ impl<'d, T: Instance, M: IoMode> Dma<'d, T, M> {
             DataConfig::IncrementingByte,
         );
 
+        // TODO: Figure out error handling (probably want unchecked)
         self.start_transfer_raw(src_addr as u32, dst_addr as u32, config);
     }
 
@@ -223,20 +249,9 @@ impl<'d, T: Instance, M: IoMode> Dma<'d, T, M> {
         } else {
             Ok(())
         };
-
-        unsafe {
-            Self::irq_ack();
-        }
+        self.reg.ctrl().modify(|_, w| w.dma_ctrl_ack().set_bit());
 
         res
-    }
-
-    /// Acknowledge interrupt.
-    ///
-    /// # Safety
-    /// TODO
-    pub unsafe fn irq_ack() {
-        T::reg().ctrl().modify(|_, w| w.dma_ctrl_ack().set_bit());
     }
 }
 

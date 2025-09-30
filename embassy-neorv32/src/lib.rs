@@ -46,3 +46,18 @@ pub fn delay_us(us: u64) {
     let end = start + cycles;
     while riscv::register::mcycle::read64() < end {}
 }
+
+/// The motivation for this macro is that due to neorv32 constraints, several peripherals need
+/// to disable the peripheral interrupt in their IRQ handler for proper async behavior
+/// (or make use of additional static atomic flags which is less preferred).
+///
+/// The driver then needs to re-enable the interrupt on wake. The HALs are designed to not require
+/// an Instance generic as part of the struct for ergonomic purposes, so we need to explicitly list
+/// the peripheral name.
+///
+/// Currently this is fine since the neorv32 only supports single instances of
+/// the peripherals where this is used, but may need revisiting if that ever changes in the future.
+macro_rules! enable_periph_irq {
+    ($periph:ident) => {{ <$crate::peripherals::$periph as Instance>::Interrupt::enable() }};
+}
+pub(crate) use enable_periph_irq;

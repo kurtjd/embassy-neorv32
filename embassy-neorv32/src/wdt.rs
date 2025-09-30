@@ -42,18 +42,18 @@ impl From<u8> for ResetCause {
     }
 }
 
-pub struct Wdt<'d, T: Instance, M: LockMode> {
-    _instance: Peri<'d, T>,
-    _phantom: PhantomData<M>,
+pub struct Wdt<'d, M: LockMode> {
+    reg: &'static crate::pac::wdt::RegisterBlock,
+    _phantom: PhantomData<&'d M>,
 }
 
-impl<'d, T: Instance> Wdt<'d, T, Unlocked> {
+impl<'d> Wdt<'d, Unlocked> {
     /// Returns a new unlocked WDT with timeout set to 24-bit max
     ///
     /// Caller should configure timeout and then enable the WDT
-    pub fn new(_instance: Peri<'d, T>) -> Self {
+    pub fn new<T: Instance>(_instance: Peri<'d, T>) -> Self {
         let wdt = Self {
-            _instance,
+            reg: T::reg(),
             _phantom: PhantomData,
         };
 
@@ -65,7 +65,7 @@ impl<'d, T: Instance> Wdt<'d, T, Unlocked> {
     /// Enable WDT
     #[inline(always)]
     pub fn enable(&self) {
-        T::reg().ctrl().modify(|_, w| w.wdt_ctrl_en().set_bit());
+        self.reg.ctrl().modify(|_, w| w.wdt_ctrl_en().set_bit());
     }
 
     /// Disable WDT
@@ -73,20 +73,20 @@ impl<'d, T: Instance> Wdt<'d, T, Unlocked> {
     /// Resets the internal timeout counter to 0
     #[inline(always)]
     pub fn disable(&self) {
-        T::reg().ctrl().modify(|_, w| w.wdt_ctrl_en().clear_bit());
+        self.reg.ctrl().modify(|_, w| w.wdt_ctrl_en().clear_bit());
     }
 
     /// Returns true if WDT is enabled
     #[inline(always)]
     pub fn enabled(&self) -> bool {
-        T::reg().ctrl().read().wdt_ctrl_en().bit_is_set()
+        self.reg.ctrl().read().wdt_ctrl_en().bit_is_set()
     }
 
     /// Sets 24-bit WDT timeout value
     ///
     /// WDT counter is clocked at 1/4096 of CPU clock frequency
     pub fn set_timeout(&self, timeout: u32) {
-        T::reg()
+        self.reg
             .ctrl()
             .modify(|_, w| unsafe { w.wdt_ctrl_timeout().bits(timeout) });
     }
@@ -105,27 +105,27 @@ impl<'d, T: Instance> Wdt<'d, T, Unlocked> {
     ///
     /// The only way to unlock the WDT is via system reset
     #[must_use]
-    pub fn lock(self) -> Wdt<'d, T, Locked> {
-        T::reg().ctrl().modify(|_, w| w.wdt_ctrl_lock().set_bit());
+    pub fn lock(self) -> Wdt<'d, Locked> {
+        self.reg.ctrl().modify(|_, w| w.wdt_ctrl_lock().set_bit());
         Wdt {
-            _instance: self._instance,
+            reg: self.reg,
             _phantom: PhantomData,
         }
     }
 }
 
-impl<'d, T: Instance, M: LockMode> Wdt<'d, T, M> {
+impl<'d, M: LockMode> Wdt<'d, M> {
     /// Resets WDT timeout counter
     pub fn feed(&self) {
         const PASSWORD: u32 = 0x709D1AB3;
-        T::reg()
+        self.reg
             .reset()
             .write(|w| unsafe { w.wdt_reset().bits(PASSWORD) });
     }
 
     /// Returns the cause of the last hardware reset
     pub fn reset_cause(&self) -> ResetCause {
-        let cause_raw = T::reg().ctrl().read().wdt_ctrl_rcause().bits();
+        let cause_raw = self.reg.ctrl().read().wdt_ctrl_rcause().bits();
         ResetCause::from(cause_raw)
     }
 
@@ -133,12 +133,12 @@ impl<'d, T: Instance, M: LockMode> Wdt<'d, T, M> {
     pub fn force_hw_reset(&self) {
         // WDT must be enabled for illegal access resets to trigger
         // It also appears that the WDT must be locked as well for incorrect password to trigger reset
-        T::reg()
+        self.reg
             .ctrl()
             .modify(|_, w| w.wdt_ctrl_en().set_bit().wdt_ctrl_lock().set_bit());
 
         // Feed incorrect password to trigger reset
-        T::reg()
+        self.reg
             .reset()
             .write(|w| unsafe { w.wdt_reset().bits(0xDEADBEEF) });
     }

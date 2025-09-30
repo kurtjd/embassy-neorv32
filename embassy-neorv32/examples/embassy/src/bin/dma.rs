@@ -20,10 +20,7 @@ type UartMutex = Mutex<CriticalSectionRawMutex, UartTx<'static, uart::Async>>;
 static UART: OnceLock<UartMutex> = OnceLock::new();
 
 #[embassy_executor::task]
-async fn dma_transfer(
-    mut dma: Dma<'static, peripherals::DMA, dma::Async>,
-    uart: &'static UartMutex,
-) {
+async fn dma_transfer(mut dma: Dma<'static, dma::Async>, uart: &'static UartMutex) {
     loop {
         let src = [42; 2048];
         let mut dst = [69; 2048];
