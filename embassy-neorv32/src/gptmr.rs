@@ -210,9 +210,10 @@ impl<'d, M: WaitMode> Gptmr<'d, M> {
     pub unsafe fn irq_clear() {
         // TODO: Investigate why this needs calling in a loop
         // Calling clear then waiting until irq is no longer pending just seems to hang
-        let reg = unsafe { &*crate::pac::Gptmr::ptr() };
-        while reg.ctrl().read().gptmr_ctrl_irq_pnd().bit_is_set() {
-            reg.ctrl().modify(|_, w| w.gptmr_ctrl_irq_clr().set_bit());
+        while GPTMR::reg().ctrl().read().gptmr_ctrl_irq_pnd().bit_is_set() {
+            GPTMR::reg()
+                .ctrl()
+                .modify(|_, w| w.gptmr_ctrl_irq_clr().set_bit());
         }
     }
 }
