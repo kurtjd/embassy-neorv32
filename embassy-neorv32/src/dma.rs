@@ -1,13 +1,10 @@
-// TODO: Really rough draft, definitely needs revisiting (and doc strings)
 //! Direct Memory Access (DMA)
-use crate::enable_periph_irq;
 use crate::interrupt::typelevel::{Binding, Handler, Interrupt};
 use crate::peripherals::DMA;
-use core::future::poll_fn;
 use core::marker::PhantomData;
-use core::sync::atomic::Ordering;
-use core::sync::atomic::fence;
-use core::task::Poll;
+use core::pin::Pin;
+use core::sync::atomic::{AtomicBool, Ordering, fence};
+use core::task::{Context, Poll};
 use embassy_hal_internal::{Peri, PeripheralType};
 use embassy_sync::waitqueue::AtomicWaker;
 
@@ -17,19 +14,24 @@ pub struct InterruptHandler<T: Instance> {
 
 impl<T: Instance> Handler<T::Interrupt> for InterruptHandler<T> {
     unsafe fn on_interrupt() {
-        // If we ack IRQ here, that clears DONE and ERROR bits thus no way to check in waker
-        // So instead disable here to prevent storm then ACK and re-enable in waker
-        // Could use static atomic bools? Not sure what the best approach is...
-        T::Interrupt::disable();
+        // Acking the interrupt clears both the ERROR and DONE flags.
+        // In poll, we can check the BUSY flag to know if we are done, but still need a way to check for bus error.
+        // So we cache the ERROR flag before clearing it.
+        let err = T::reg().ctrl().read().dma_ctrl_error().bit_is_set();
+        T::err_flag().store(err, Ordering::SeqCst);
+        T::reg().ctrl().modify(|_, w| w.dma_ctrl_ack().set_bit());
+
         T::waker().wake();
     }
 }
 
+/// DMA error.
 pub enum Error {
+    /// Indicates a bus error occurred during transfer.
     BusError,
 }
 
-pub enum DataConfig {
+enum DataConfig {
     ConstantByte,
     ConstantWord,
     IncrementingByte,
@@ -47,233 +49,286 @@ impl From<DataConfig> for u32 {
     }
 }
 
-pub struct TransferConfig {
+struct TransferConfig {
     num_elems: u32,
     swap_byte_order: bool,
-    src_config: DataConfig,
-    dst_config: DataConfig,
+    src_cfg: DataConfig,
+    dst_cfg: DataConfig,
 }
 
 impl TransferConfig {
-    pub fn new(
+    fn new(
         num_elems: u32,
         swap_byte_order: bool,
-        src_config: DataConfig,
-        dst_config: DataConfig,
+        src_cfg: DataConfig,
+        dst_cfg: DataConfig,
     ) -> Self {
+        // Hardware only supports 23 bits for num elements
         assert!(num_elems > 0 && num_elems < 0xff_ffff);
         Self {
             num_elems,
             swap_byte_order,
-            src_config,
-            dst_config,
+            src_cfg,
+            dst_cfg,
         }
     }
 }
 
 impl From<TransferConfig> for u32 {
     fn from(config: TransferConfig) -> Self {
-        (u32::from(config.dst_config) << 30)
-            | (u32::from(config.src_config) << 28)
+        (u32::from(config.dst_cfg) << 30)
+            | (u32::from(config.src_cfg) << 28)
             | ((config.swap_byte_order as u32) << 27)
             | (config.num_elems & 0xff_ffff)
     }
 }
 
-pub enum Descriptor {
+enum Descriptor {
     BaseAddress(u32),
     Config(TransferConfig),
 }
 
-/// Direct Memory Access (DMA) Driver.
-pub struct Dma<'d, M: IoMode> {
+impl From<Descriptor> for u32 {
+    fn from(descriptor: Descriptor) -> Self {
+        match descriptor {
+            Descriptor::BaseAddress(addr) => addr,
+            Descriptor::Config(cfg) => cfg.into(),
+        }
+    }
+}
+
+/// Single-channel Direct Memory Access (DMA) driver.
+pub struct Dma<'d> {
     reg: &'static crate::pac::dma::RegisterBlock,
     waker: &'static AtomicWaker,
-    _phantom: PhantomData<&'d M>,
+    err_flag: &'static AtomicBool,
+    _phantom: PhantomData<&'d ()>,
 }
 
-impl<'d> Dma<'d, Blocking> {
-    /// Returns a new instance of a blocking DMA and enables it.
-    pub fn new_blocking<T: Instance>(_instance: Peri<'d, T>) -> Self {
-        Self::new_inner(_instance)
-    }
-
-    /// Acknowledge interrupt.
-    ///
-    /// Does not take [&Self] for ease of use in IRQ handlers.
-    ///
-    /// # Safety
-    /// Async users should **never** call this manually.
-    /// Blocking users should ensure correctness.
-    pub unsafe fn irq_ack() {
-        DMA::reg().ctrl().modify(|_, w| w.dma_ctrl_ack().set_bit());
-    }
-}
-
-impl<'d> Dma<'d, Async> {
-    /// Returns a new instance of an async DMA and enables it.
-    pub fn new_async<T: Instance>(
+impl<'d> Dma<'d> {
+    /// Creates a new instance of a DMA driver.
+    pub fn new<T: Instance>(
         _instance: Peri<'d, T>,
         _irq: impl Binding<T::Interrupt, InterruptHandler<T>> + 'd,
     ) -> Self {
-        Self::new_inner(_instance)
-    }
+        // SAFETY: Enabling DMA interrupts at this point is valid
+        unsafe { T::Interrupt::enable() }
 
-    pub async fn transfer(&mut self, src: &[u8], dst: &mut [u8]) -> Result<(), Error> {
-        assert!(src.len() == dst.len());
-
-        // These fences are needed if dCache is enabled to force CPU to flush cache and see DMA writes
-        fence(Ordering::Release);
-        self.start_transfer(src.as_ptr(), dst.as_mut_ptr(), src.len() as u32);
-
-        poll_fn(|cx| {
-            self.waker.register(cx.waker());
-            let p = if self.transfer_complete() {
-                Poll::Ready(Ok(()))
-            } else if self.bus_error() {
-                Poll::Ready(Err(Error::BusError))
-            } else {
-                unsafe { enable_periph_irq!(DMA) }
-                Poll::Pending
-            };
-
-            // Flush the cache and ack interrupt only if transfer has completed or errored
-            if p.is_ready() {
-                fence(Ordering::Acquire);
-                self.reg.ctrl().modify(|_, w| w.dma_ctrl_ack().set_bit());
-            }
-
-            p
-        })
-        .await
-    }
-}
-
-impl<'d, M: IoMode> Dma<'d, M> {
-    fn new_inner<T: Instance>(_instance: Peri<'d, T>) -> Self {
-        let mut dma = Self {
+        Self {
             reg: T::reg(),
             waker: T::waker(),
+            err_flag: T::err_flag(),
             _phantom: PhantomData,
-        };
-
-        dma.enable();
-        dma
+        }
     }
 
-    pub fn enable(&mut self) {
+    /// Starts a transfer which reads from src until the dst buffer is filled.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the dst buffer length is greater than u23 max.
+    pub fn read<'t, SW: Word, DW: Word>(
+        &'t mut self,
+        src: &SW,
+        dst: &mut [DW],
+        swap_byte_order: bool,
+    ) -> Transfer<'d, 't> {
+        Transfer::new(
+            self,
+            src as *const SW as *const u32,
+            SW::cfg_constant(),
+            dst as *mut [DW] as *mut u32,
+            DW::cfg_increment(),
+            dst.len() as u32,
+            swap_byte_order,
+        )
+    }
+
+    /// Starts a transfer which writes all elements from the src buffer to dst.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the src buffer length is greater than u23 max.
+    pub fn write<'t, SW: Word, DW: Word>(
+        &'t mut self,
+        src: &[SW],
+        dst: &mut DW,
+        swap_byte_order: bool,
+    ) -> Transfer<'d, 't> {
+        Transfer::new(
+            self,
+            src as *const [SW] as *const u32,
+            SW::cfg_increment(),
+            dst as *mut DW as *mut u32,
+            DW::cfg_constant(),
+            src.len() as u32,
+            swap_byte_order,
+        )
+    }
+
+    /// Starts a transfer which copies all elements from the src buffer to the dst buffer.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the src buffer length does not match the dst buffer length,
+    /// or if the buffer length is greater than u23 max.
+    pub fn copy<'t, SW: Word, DW: Word>(
+        &'t mut self,
+        src: &[SW],
+        dst: &mut [DW],
+        swap_byte_order: bool,
+    ) -> Transfer<'d, 't> {
+        assert!(src.len() == dst.len());
+        Transfer::new(
+            self,
+            src as *const [SW] as *const u32,
+            SW::cfg_increment(),
+            dst as *mut [DW] as *mut u32,
+            DW::cfg_increment(),
+            src.len() as u32,
+            swap_byte_order,
+        )
+    }
+
+    fn enable(&mut self) {
         self.reg.ctrl().modify(|_, w| w.dma_ctrl_en().set_bit());
     }
 
-    pub fn disable(&mut self) {
-        self.reg.ctrl().modify(|_, w| w.dma_ctrl_en().clear_bit());
+    fn disable(&mut self) {
+        self.reg.ctrl().modify(|_, w| w.dma_ctrl_en().set_bit());
     }
 
-    pub fn enabled(&self) -> bool {
-        self.reg.ctrl().read().dma_ctrl_en().bit_is_set()
-    }
-
-    pub fn start(&mut self) {
+    fn start(&mut self) {
         self.reg.ctrl().modify(|_, w| w.dma_ctrl_start().set_bit());
     }
 
-    pub fn fifo_empty(&self) -> bool {
-        self.reg.ctrl().read().dma_ctrl_dempty().bit_is_set()
+    fn write_descriptor(&mut self, descriptor: Descriptor) {
+        // SAFETY: We are writing a valid descriptor
+        self.reg
+            .desc()
+            .write(|w| unsafe { w.bits(descriptor.into()) });
     }
 
-    pub fn fifo_full(&self) -> bool {
-        self.reg.ctrl().read().dma_ctrl_dfull().bit_is_set()
-    }
-
-    pub fn bus_error(&self) -> bool {
-        self.reg.ctrl().read().dma_ctrl_error().bit_is_set()
-    }
-
-    pub fn transfer_complete(&self) -> bool {
-        self.reg.ctrl().read().dma_ctrl_done().bit_is_set()
-    }
-
-    pub fn busy(&self) -> bool {
+    fn busy(&self) -> bool {
         self.reg.ctrl().read().dma_ctrl_busy().bit_is_set()
     }
 
-    pub fn write_descriptor(&mut self, desc: Descriptor) {
-        let raw = match desc {
-            Descriptor::BaseAddress(addr) => addr,
-            Descriptor::Config(config) => config.into(),
-        };
-        self.reg.desc().write(|w| unsafe { w.bits(raw) });
-    }
-
-    pub fn start_transfer_raw(&mut self, src_addr: u32, dst_addr: u32, config: TransferConfig) {
-        let descriptors = [
-            Descriptor::BaseAddress(src_addr),
-            Descriptor::BaseAddress(dst_addr),
-            Descriptor::Config(config),
-        ];
-
-        for desc in descriptors {
-            // In normal use cases of the HAL, this should never block
-            // Mainly here in case someone goes behind the HAL's back and writes a non-complete descriptor
-            // Other options are to just overwrite or return error, but blocking seems best choice
-            while self.fifo_full() {}
-            self.write_descriptor(desc);
-        }
-
-        self.reg.ctrl().modify(|_, w| w.dma_ctrl_start().set_bit());
-    }
-
-    pub fn start_transfer(&mut self, src_addr: *const u8, dst_addr: *mut u8, len: u32) {
-        let config = TransferConfig::new(
-            len,
-            false,
-            DataConfig::IncrementingByte,
-            DataConfig::IncrementingByte,
-        );
-
-        // TODO: Figure out error handling (probably want unchecked)
-        self.start_transfer_raw(src_addr as u32, dst_addr as u32, config);
-    }
-
-    /// Blocking transfer not really useful in practice, just for testing at the moment.
-    pub fn blocking_transfer(&mut self, src: &[u8], dst: &mut [u8]) -> Result<(), Error> {
-        assert!(src.len() == dst.len());
-
-        fence(Ordering::Release);
-        self.start_transfer(src.as_ptr(), dst.as_mut_ptr(), src.len() as u32);
-        while !self.transfer_complete() && !self.bus_error() {}
-        fence(Ordering::Acquire);
-
-        let res = if self.bus_error() {
-            Err(Error::BusError)
-        } else {
-            Ok(())
-        };
-        self.reg.ctrl().modify(|_, w| w.dma_ctrl_ack().set_bit());
-
-        res
+    fn abort(&mut self) {
+        // Disable DMA and flush cache to ensure CPU sees most recent main memory
+        self.disable();
+        fence(Ordering::SeqCst);
     }
 }
 
-trait SealedIoMode {}
+/// A DMA transfer.
+///
+/// The transfer should be awaited to ensure completion.
+///
+/// **Note**: The transfer will be aborted if cancelled/dropped before completion.
+#[must_use = "futures do nothing unless you `.await` or poll them"]
+pub struct Transfer<'d, 't> {
+    // Note: We use 2 unique lifetimes here so that Transfer holds a mutable reference to Dma
+    // (to prevent other transfers from being simultaneously created) for AT MOST as long as it lives.
+    //
+    // If we use a single lifetime, the borrow checker assumes the Transfer lives as long as Dma lives.
+    //
+    // Can think of it as 't represents Transfer lifetime and 'd represents Dma lifetime.
+    dma: &'t mut Dma<'d>,
+}
 
-/// DMA IO mode.
+impl<'d, 't> Transfer<'d, 't> {
+    fn new(
+        dma: &'t mut Dma<'d>,
+        src: *const u32,
+        src_cfg: DataConfig,
+        dst: *mut u32,
+        dst_cfg: DataConfig,
+        len: u32,
+        swap_byte_order: bool,
+    ) -> Self {
+        // Clear error flag and enable DMA
+        dma.err_flag.store(false, Ordering::SeqCst);
+        dma.enable();
+
+        // Configure the transfer
+        let config = TransferConfig::new(len, swap_byte_order, src_cfg, dst_cfg);
+        let descriptors = [
+            Descriptor::BaseAddress(src as u32),
+            Descriptor::BaseAddress(dst as u32),
+            Descriptor::Config(config),
+        ];
+
+        // Write each descriptor
+        // We are assuming the descriptor FIFO is empty because this HAL does not allow partial transfers in the FIFO
+        for descriptor in descriptors {
+            dma.write_descriptor(descriptor);
+        }
+
+        // Flush cache to ensure DMA sees most recent main memory, then start transfer
+        fence(Ordering::SeqCst);
+        dma.start();
+        Self { dma }
+    }
+}
+
+impl<'d, 't> Drop for Transfer<'d, 't> {
+    // When the transfer is completed, or otherwise dropped or cancelled, always get here
+    // Regardless, we ensure the DMA is disabled (aborting the transfer if in progress) and flush cache
+    fn drop(&mut self) {
+        self.dma.abort();
+    }
+}
+
+impl<'d, 't> Future for Transfer<'d, 't> {
+    type Output = Result<(), Error>;
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        self.dma.waker.register(cx.waker());
+
+        if self.dma.busy() {
+            Poll::Pending
+        } else if self.dma.err_flag.load(Ordering::SeqCst) {
+            Poll::Ready(Err(Error::BusError))
+        } else {
+            Poll::Ready(Ok(()))
+        }
+    }
+}
+
+trait SealedWord {
+    fn cfg_constant() -> DataConfig;
+    fn cfg_increment() -> DataConfig;
+}
+
+/// A DMA transfer word.
 #[allow(private_bounds)]
-pub trait IoMode: SealedIoMode {}
+pub trait Word: SealedWord {}
 
-/// Blocking DMA.
-pub struct Blocking;
-impl SealedIoMode for Blocking {}
-impl IoMode for Blocking {}
+impl SealedWord for u8 {
+    fn cfg_constant() -> DataConfig {
+        DataConfig::ConstantByte
+    }
 
-/// Async DMA.
-pub struct Async;
-impl SealedIoMode for Async {}
-impl IoMode for Async {}
+    fn cfg_increment() -> DataConfig {
+        DataConfig::IncrementingByte
+    }
+}
+impl Word for u8 {}
+
+impl SealedWord for u32 {
+    fn cfg_constant() -> DataConfig {
+        DataConfig::ConstantWord
+    }
+
+    fn cfg_increment() -> DataConfig {
+        DataConfig::IncrementingWord
+    }
+}
+impl Word for u32 {}
 
 trait SealedInstance {
     fn reg() -> &'static crate::pac::dma::RegisterBlock;
     fn waker() -> &'static AtomicWaker;
+    fn err_flag() -> &'static AtomicBool;
 }
 
 /// A valid DMA peripheral.
@@ -289,6 +344,11 @@ impl SealedInstance for DMA {
     fn waker() -> &'static AtomicWaker {
         static WAKER: AtomicWaker = AtomicWaker::new();
         &WAKER
+    }
+
+    fn err_flag() -> &'static AtomicBool {
+        static ERR_FLAG: AtomicBool = AtomicBool::new(false);
+        &ERR_FLAG
     }
 }
 impl Instance for DMA {

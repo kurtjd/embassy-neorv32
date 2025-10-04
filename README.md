@@ -15,10 +15,10 @@ Planning to investigate support for a "max" configuration in the future.
 ## Peripherals Currently Supported
 - SysInfo
 - WDT
+- DMA
 - Blocking and Async UART
 - Blocking and Async TRNG
 - Blocking and Async GPTMR
-- Rough draft Blocking and Async DMA
 - Rough draft Blocking and Async GPIO
 
 ## TODO
