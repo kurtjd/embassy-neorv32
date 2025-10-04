@@ -137,7 +137,7 @@ impl<'d> Dma<'d> {
             self,
             src as *const SW as *const u32,
             SW::cfg_constant(),
-            dst as *mut [DW] as *mut u32,
+            dst.as_mut_ptr() as *mut u32,
             DW::cfg_increment(),
             dst.len() as u32,
             swap_byte_order,
@@ -157,7 +157,7 @@ impl<'d> Dma<'d> {
     ) -> Transfer<'d, 't> {
         Transfer::new(
             self,
-            src as *const [SW] as *const u32,
+            src.as_ptr() as *const u32,
             SW::cfg_increment(),
             dst as *mut DW as *mut u32,
             DW::cfg_constant(),
@@ -181,9 +181,9 @@ impl<'d> Dma<'d> {
         assert!(src.len() == dst.len());
         Transfer::new(
             self,
-            src as *const [SW] as *const u32,
+            src.as_ptr() as *const u32,
             SW::cfg_increment(),
-            dst as *mut [DW] as *mut u32,
+            dst.as_mut_ptr() as *mut u32,
             DW::cfg_increment(),
             src.len() as u32,
             swap_byte_order,
@@ -195,7 +195,7 @@ impl<'d> Dma<'d> {
     }
 
     fn disable(&mut self) {
-        self.reg.ctrl().modify(|_, w| w.dma_ctrl_en().set_bit());
+        self.reg.ctrl().modify(|_, w| w.dma_ctrl_en().clear_bit());
     }
 
     fn start(&mut self) {
