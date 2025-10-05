@@ -1,6 +1,6 @@
 #![no_std]
 #![no_main]
-use embassy_neorv32::uart::{self, Uart, UartTx};
+use embassy_neorv32::uart::{self, UartTx};
 use panic_halt as _;
 
 // Ported to Rust from:
@@ -37,7 +37,7 @@ fn main() -> ! {
     let p = embassy_neorv32::init();
 
     // Setup UART in simulation mode with no HW flow control and a arbitrary baud rate (since sim immediately prints)
-    let mut uart = Uart::new_blocking_tx(p.UART0, 19200, true, false);
+    let mut uart = UartTx::new_blocking(p.UART0, 19200, true, false);
     print_logo(&mut uart);
 
     // Note: '\n' seems necessary for UART writes for sim to flush output

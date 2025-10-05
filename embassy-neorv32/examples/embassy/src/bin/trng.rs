@@ -4,7 +4,7 @@ use core::fmt::Write;
 use embassy_neorv32::bind_interrupts;
 use embassy_neorv32::peripherals;
 use embassy_neorv32::trng::{self, Trng};
-use embassy_neorv32::uart::{self, Uart};
+use embassy_neorv32::uart::{self, UartTx};
 use embassy_time::Timer;
 use panic_halt as _;
 
@@ -18,7 +18,7 @@ async fn main(_spawner: embassy_executor::Spawner) {
     let p = embassy_neorv32::init();
 
     // Setup UART for display purposes
-    let mut uart = Uart::new_async_tx(p.UART0, 19200, true, false, Irqs);
+    let mut uart = UartTx::new_async(p.UART0, 19200, true, false, Irqs);
 
     // Setup async TRNG
     let mut trng = Trng::new_async(p.TRNG, Irqs);

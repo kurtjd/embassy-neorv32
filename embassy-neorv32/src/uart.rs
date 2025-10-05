@@ -29,8 +29,6 @@ impl<T: Instance> Handler<T::Interrupt> for InterruptHandler<T> {
                 .modify(|_, w| w.uart_ctrl_irq_tx_nfull().clear_bit());
             T::tx_waker().wake();
         }
-
-        // TODO: Investigate if it makes sense to handle RX FIFO full and TX FIFO empty IRQs
     }
 }
 
@@ -40,104 +38,8 @@ pub struct Uart<'d, M: IoMode> {
     tx: UartTx<'d, M>,
 }
 
-impl<'d> Uart<'d, Blocking> {
-    /// Creates a new blocking UART driver with given baud rate.
-    ///
-    /// Enables simulation mode if `sim` is true and hardware flow control if `flow_control` is true.
-    ///
-    /// **Note**: Must call [Self::split] to create Rx and Tx drivers.
-    pub fn new_blocking<T: Instance>(
-        _instance: Peri<'d, T>,
-        baud_rate: u32,
-        sim: bool,
-        flow_control: bool,
-    ) -> Self {
-        Self::new_inner(_instance, baud_rate, sim, flow_control)
-    }
-
-    /// Creates a new RX-only blocking UART driver with given baud rate.
-    ///
-    /// Enables simulation mode if `sim` is true and hardware flow control if `flow_control` is true.
-    pub fn new_blocking_rx<T: Instance>(
-        _instance: Peri<'d, T>,
-        baud_rate: u32,
-        sim: bool,
-        flow_control: bool,
-    ) -> UartRx<'d, Blocking> {
-        let uart = Self::new_inner(_instance, baud_rate, sim, flow_control);
-        uart.rx
-    }
-
-    /// Creates a new TX-only blocking UART driver with given baud rate.
-    ///
-    /// Enables simulation mode if `sim` is true and hardware flow control if `flow_control` is true.
-    pub fn new_blocking_tx<T: Instance>(
-        _instance: Peri<'d, T>,
-        baud_rate: u32,
-        sim: bool,
-        flow_control: bool,
-    ) -> UartTx<'d, Blocking> {
-        let uart = Self::new_inner(_instance, baud_rate, sim, flow_control);
-        uart.tx
-    }
-}
-
-impl<'d> Uart<'d, Async> {
-    /// Creates a new async UART driver with given baud rate.
-    ///
-    /// Enables simulation mode if `sim` is true and hardware flow control if `flow_control` is true.
-    ///
-    /// **Note**: Must call [Self::split] to create Rx and Tx drivers.
-    pub fn new_async<T: Instance>(
-        _instance: Peri<'d, T>,
-        baud_rate: u32,
-        sim: bool,
-        flow_control: bool,
-        _irq: impl Binding<T::Interrupt, InterruptHandler<T>> + 'd,
-    ) -> Self {
-        let uart = Self::new_inner(_instance, baud_rate, sim, flow_control);
-        unsafe { T::Interrupt::enable() }
-        uart
-    }
-
-    /// Creates a new RX-only async UART driver with given baud rate.
-    ///
-    /// Enables simulation mode if `sim` is true and hardware flow control if `flow_control` is true.
-    pub fn new_async_rx<T: Instance>(
-        _instance: Peri<'d, T>,
-        baud_rate: u32,
-        sim: bool,
-        flow_control: bool,
-        _irq: impl Binding<T::Interrupt, InterruptHandler<T>> + 'd,
-    ) -> UartRx<'d, Async> {
-        let uart = Self::new_inner(_instance, baud_rate, sim, flow_control);
-        unsafe { T::Interrupt::enable() }
-        uart.rx
-    }
-
-    /// Creates a new TX-only async UART driver with given baud rate.
-    ///
-    /// Enables simulation mode if `sim` is true and hardware flow control if `flow_control` is true.
-    pub fn new_async_tx<T: Instance>(
-        _instance: Peri<'d, T>,
-        baud_rate: u32,
-        sim: bool,
-        flow_control: bool,
-        _irq: impl Binding<T::Interrupt, InterruptHandler<T>> + 'd,
-    ) -> UartTx<'d, Async> {
-        let uart = Self::new_inner(_instance, baud_rate, sim, flow_control);
-        unsafe { T::Interrupt::enable() }
-        uart.tx
-    }
-}
-
 impl<'d, M: IoMode> Uart<'d, M> {
-    fn new_inner<T: Instance>(
-        _instance: Peri<'d, T>,
-        baud_rate: u32,
-        sim: bool,
-        flow_control: bool,
-    ) -> Self {
+    fn init<T: Instance>(_instance: Peri<'d, T>, baud_rate: u32, sim: bool, flow_control: bool) {
         // Enable simulation mode if applicable
         if sim {
             T::reg()
@@ -176,23 +78,37 @@ impl<'d, M: IoMode> Uart<'d, M> {
 
         // Enable UART
         T::reg().ctrl().modify(|_, w| w.uart_ctrl_en().set_bit());
+    }
 
-        // Create RX
-        let tx = UartTx {
-            reg: T::reg(),
-            waker: T::tx_waker(),
-            _phantom: PhantomData,
-        };
-
-        // Create TX
-        let rx = UartRx {
-            reg: T::reg(),
-            waker: T::rx_waker(),
-            _phantom: PhantomData,
-        };
-
-        // Finally return it
+    fn new_inner<T: Instance>() -> Self {
+        let rx = UartRx::new_inner::<T>();
+        let tx = UartTx::new_inner::<T>();
         Self { rx, tx }
+    }
+
+    /// Reads a byte from RX FIFO, blocking if empty.
+    pub fn blocking_read_byte(&self) -> u8 {
+        self.rx.blocking_read_byte()
+    }
+
+    /// Reads bytes from RX FIFO until buffer is full, blocking if empty.
+    pub fn blocking_read(&self, buf: &mut [u8]) {
+        self.rx.blocking_read(buf);
+    }
+
+    /// Writes a byte to TX FIFO, blocking if full.
+    pub fn blocking_write_byte(&mut self, byte: u8) {
+        self.tx.blocking_write_byte(byte);
+    }
+
+    /// Writes bytes to TX FIFO, blocking if full.
+    pub fn blocking_write(&mut self, bytes: &[u8]) {
+        self.tx.blocking_write(bytes);
+    }
+
+    /// Blocks until all TX complete.
+    pub fn tx_flush(&mut self) {
+        self.tx.flush();
     }
 
     /// Splits the UART driver into separate [UartRx] and [UartTx] drivers.
@@ -200,6 +116,66 @@ impl<'d, M: IoMode> Uart<'d, M> {
     /// Helpful for sharing the UART among receiver/transmitter tasks.
     pub fn split(self) -> (UartRx<'d, M>, UartTx<'d, M>) {
         (self.rx, self.tx)
+    }
+
+    /// Splits the UART driver into separate [UartRx] and [UartTx] drivers by mutable reference.
+    ///
+    /// Helpful for sharing the UART among receiver/transmitter tasks without destroying the original [Uart] instance.
+    pub fn split_ref(&mut self) -> (&mut UartRx<'d, M>, &mut UartTx<'d, M>) {
+        (&mut self.rx, &mut self.tx)
+    }
+}
+
+impl<'d> Uart<'d, Blocking> {
+    /// Creates a new blocking UART driver with given baud rate.
+    ///
+    /// Enables simulation mode if `sim` is true and hardware flow control if `flow_control` is true.
+    pub fn new_blocking<T: Instance>(
+        _instance: Peri<'d, T>,
+        baud_rate: u32,
+        sim: bool,
+        flow_control: bool,
+    ) -> Self {
+        Self::init(_instance, baud_rate, sim, flow_control);
+        Self::new_inner::<T>()
+    }
+}
+
+impl<'d> Uart<'d, Async> {
+    /// Creates a new async UART driver with given baud rate.
+    ///
+    /// Enables simulation mode if `sim` is true and hardware flow control if `flow_control` is true.
+    pub fn new_async<T: Instance>(
+        _instance: Peri<'d, T>,
+        baud_rate: u32,
+        sim: bool,
+        flow_control: bool,
+        _irq: impl Binding<T::Interrupt, InterruptHandler<T>> + 'd,
+    ) -> Self {
+        Self::init(_instance, baud_rate, sim, flow_control);
+        // SAFETY: It is valid to enable UART interrupt here
+        unsafe { T::Interrupt::enable() }
+        Self::new_inner::<T>()
+    }
+
+    /// Reads a byte from RX FIFO.
+    pub fn read_byte(&mut self) -> impl Future<Output = u8> {
+        self.rx.read_byte()
+    }
+
+    /// Reads bytes from RX FIFO until buffer is full.
+    pub fn read(&mut self, buf: &mut [u8]) -> impl Future<Output = ()> {
+        self.rx.read(buf)
+    }
+
+    /// Writes a byte to TX FIFO.
+    pub fn write_byte(&mut self, byte: u8) -> impl Future<Output = ()> {
+        self.tx.write_byte(byte)
+    }
+
+    /// Writes bytes from buffer to TX FIFO.
+    pub fn write(&mut self, bytes: &[u8]) -> impl Future<Output = ()> {
+        self.tx.write(bytes)
     }
 }
 
@@ -210,85 +186,27 @@ pub struct UartRx<'d, M: IoMode> {
     _phantom: PhantomData<&'d M>,
 }
 
-impl<'d> UartRx<'d, Blocking> {
-    /// Enable or disable RX FIFO not empty interrupt.
-    pub fn enable_irq_rx_nempty(&mut self, enabled: bool) {
-        self.reg
-            .ctrl()
-            .modify(|_, w| w.uart_ctrl_irq_rx_nempty().bit(enabled));
-    }
-
-    /// Enable or disable RX FIFO full interrupt.
-    pub fn enable_irq_rx_full(&mut self, enabled: bool) {
-        self.reg
-            .ctrl()
-            .modify(|_, w| w.uart_ctrl_irq_rx_full().bit(enabled));
-    }
-}
-
-impl<'d> UartRx<'d, Async> {
-    /// Reads a byte from RX FIFO.
-    pub async fn read_byte(&self) -> u8 {
-        // If data is available, return it immediately
-        if !self.fifo_empty() {
-            return self.read_unchecked();
-        }
-
-        // Otherwise, enable interrupt and wait
-        // Note: CS used here since interrupt modifies register
-        critical_section::with(|_| {
-            self.reg
-                .ctrl()
-                .modify(|_, w| w.uart_ctrl_irq_rx_nempty().set_bit())
-        });
-
-        poll_fn(|cx| {
-            self.waker.register(cx.waker());
-            if !self.fifo_empty() {
-                Poll::Ready(self.read_unchecked())
-            } else {
-                Poll::Pending
-            }
-        })
-        .await
-    }
-
-    /// Reads bytes from RX FIFO until buffer is full.
-    pub async fn read(&self, buf: &mut [u8]) {
-        for byte in buf {
-            *byte = self.read_byte().await;
-        }
-    }
-}
-
 impl<'d, M: IoMode> UartRx<'d, M> {
-    // Private convenience wrapper around reading DATA
+    fn new_inner<T: Instance>() -> Self {
+        Self {
+            reg: T::reg(),
+            waker: T::rx_waker(),
+            _phantom: PhantomData,
+        }
+    }
+
     fn read_unchecked(&self) -> u8 {
         self.reg.data().read().bits() as u8
     }
 
-    /// Returns true if RX FIFO is empty.
-    pub fn fifo_empty(&self) -> bool {
+    fn enable_irq_rx_nempty(&mut self) {
+        self.reg
+            .ctrl()
+            .modify(|_, w| w.uart_ctrl_irq_rx_nempty().set_bit());
+    }
+
+    fn fifo_empty(&self) -> bool {
         self.reg.ctrl().read().uart_ctrl_rx_nempty().bit_is_clear()
-    }
-
-    /// Returns true if RX FIFO is full.
-    pub fn fifo_full(&self) -> bool {
-        self.reg.ctrl().read().uart_ctrl_rx_full().bit_is_set()
-    }
-
-    /// Returns true if RX FIFO has overflowed.
-    pub fn fifo_overflow(&self) -> bool {
-        self.reg.ctrl().read().uart_ctrl_rx_over().bit_is_set()
-    }
-
-    /// Returns depth of the RX FIFO.
-    pub fn fifo_depth(&self) -> u32 {
-        // TODO: Patch SVD to make this a field
-        // TODO: Since shares reg with DATA, this also removes byte from FIFO... not good
-        // Read value is log2, so do inverse log for actual value
-        let raw = (self.reg.data().read().bits() >> 8) as u8 & 0b1111;
-        1 << raw as u32
     }
 
     /// Reads a byte from RX FIFO, blocking if empty.
@@ -305,6 +223,59 @@ impl<'d, M: IoMode> UartRx<'d, M> {
     }
 }
 
+impl<'d> UartRx<'d, Blocking> {
+    /// Creates a new RX-only blocking UART driver with given baud rate.
+    ///
+    /// Enables hardware flow control if `flow_control` is true.
+    pub fn new_blocking<T: Instance>(
+        _instance: Peri<'d, T>,
+        baud_rate: u32,
+        flow_control: bool,
+    ) -> Self {
+        Uart::<Blocking>::init(_instance, baud_rate, false, flow_control);
+        Self::new_inner::<T>()
+    }
+}
+
+impl<'d> UartRx<'d, Async> {
+    /// Creates a new RX-only async UART driver with given baud rate.
+    ///
+    /// Enables hardware flow control if `flow_control` is true.
+    pub fn new_async<T: Instance>(
+        _instance: Peri<'d, T>,
+        baud_rate: u32,
+        flow_control: bool,
+        _irq: impl Binding<T::Interrupt, InterruptHandler<T>> + 'd,
+    ) -> Self {
+        Uart::<Async>::init(_instance, baud_rate, false, flow_control);
+        // SAFETY: It is valid to enable UART interrupt here
+        unsafe { T::Interrupt::enable() }
+        Self::new_inner::<T>()
+    }
+
+    /// Reads a byte from RX FIFO.
+    pub async fn read_byte(&mut self) -> u8 {
+        poll_fn(|cx| {
+            self.waker.register(cx.waker());
+            if !self.fifo_empty() {
+                Poll::Ready(self.read_unchecked())
+            } else {
+                // CS used here since interrupt modifies register
+                critical_section::with(|_| self.enable_irq_rx_nempty());
+                Poll::Pending
+            }
+        })
+        .await
+    }
+
+    /// Reads bytes from RX FIFO until buffer is full.
+    pub async fn read(&mut self, buf: &mut [u8]) {
+        for byte in buf {
+            *byte = self.read_byte().await;
+        }
+    }
+}
+
 /// TX-only UART driver.
 pub struct UartTx<'d, M: IoMode> {
     reg: &'static crate::pac::uart0::RegisterBlock,
@@ -315,81 +286,28 @@ pub struct UartTx<'d, M: IoMode> {
 // TODO: Revisit soundness of this
 unsafe impl<'d, M: IoMode> Send for UartTx<'d, M> {}
 
-impl<'d> UartTx<'d, Blocking> {
-    /// Enable or disable TX FIFO empty interrupt.
-    pub fn enable_irq_tx_empty(&mut self, enabled: bool) {
-        self.reg
-            .ctrl()
-            .modify(|_, w| w.uart_ctrl_irq_tx_empty().bit(enabled));
-    }
-
-    /// Enable or disable TX FIFO not full interrupt.
-    pub fn enable_irq_tx_nfull(&mut self, enabled: bool) {
-        self.reg
-            .ctrl()
-            .modify(|_, w| w.uart_ctrl_irq_tx_nfull().bit(enabled));
-    }
-}
-
-impl<'d> UartTx<'d, Async> {
-    /// Writes a byte to TX FIFO.
-    pub async fn write_byte(&mut self, byte: u8) {
-        // If FIFO isn't full, write and return immediately
-        if !self.fifo_full() {
-            return self.write_unchecked(byte);
-        }
-
-        // Otherwise, enable interrupt and wait
-        // Note: CS used here since interrupt modifies register
-        critical_section::with(|_| {
-            self.reg
-                .ctrl()
-                .modify(|_, w| w.uart_ctrl_irq_tx_nfull().set_bit())
-        });
-
-        poll_fn(|cx| {
-            self.waker.register(cx.waker());
-            if !self.fifo_full() {
-                self.write_unchecked(byte);
-                Poll::Ready(())
-            } else {
-                Poll::Pending
-            }
-        })
-        .await
-    }
-
-    /// Writes bytes from buffer to TX FIFO.
-    pub async fn write(&mut self, bytes: &[u8]) {
-        for byte in bytes {
-            self.write_byte(*byte).await;
-        }
-    }
-}
-
 impl<'d, M: IoMode> UartTx<'d, M> {
-    // Private convenience wrapper around wrtiting a byte to DATA
+    fn new_inner<T: Instance>() -> Self {
+        Self {
+            reg: T::reg(),
+            waker: T::tx_waker(),
+            _phantom: PhantomData,
+        }
+    }
+
     fn write_unchecked(&mut self, byte: u8) {
+        // SAFETY: We are just writing a byte, the MSB bits are read-only
         self.reg.data().write(|w| unsafe { w.bits(byte as u32) });
     }
 
-    /// Returns true if TX FIFO is empty.
-    pub fn fifo_empty(&self) -> bool {
-        self.reg.ctrl().read().uart_ctrl_tx_empty().bit_is_set()
+    fn enable_irq_tx_nfull(&mut self) {
+        self.reg
+            .ctrl()
+            .modify(|_, w| w.uart_ctrl_irq_tx_nfull().set_bit());
     }
 
-    /// Returns true if TX FIFO is full.
-    pub fn fifo_full(&self) -> bool {
+    fn fifo_full(&self) -> bool {
         self.reg.ctrl().read().uart_ctrl_tx_nfull().bit_is_clear()
-    }
-
-    /// Returns depth of the TX FIFO.
-    pub fn fifo_depth(&self) -> u32 {
-        // TODO: Patch SVD to make this a field
-        // TODO: Since shares reg with DATA, this also removes byte from FIFO... not good
-        // Read value is log2, so do inverse log for actual value
-        let raw = (self.reg.data().read().bits() >> 12) as u8 & 0b1111;
-        1 << raw as u32
     }
 
     /// Writes a byte to TX FIFO, blocking if full.
@@ -408,6 +326,62 @@ impl<'d, M: IoMode> UartTx<'d, M> {
     /// Blocks until all TX complete.
     pub fn flush(&mut self) {
         while self.reg.ctrl().read().uart_ctrl_tx_busy().bit_is_set() {}
+    }
+}
+
+impl<'d> UartTx<'d, Blocking> {
+    /// Creates a new TX-only blocking UART driver with given baud rate.
+    ///
+    /// Enables simulation mode if `sim` is true and hardware flow control if `flow_control` is true.
+    pub fn new_blocking<T: Instance>(
+        _instance: Peri<'d, T>,
+        baud_rate: u32,
+        sim: bool,
+        flow_control: bool,
+    ) -> Self {
+        Uart::<Blocking>::init(_instance, baud_rate, sim, flow_control);
+        Self::new_inner::<T>()
+    }
+}
+
+impl<'d> UartTx<'d, Async> {
+    /// Creates a new TX-only async UART driver with given baud rate.
+    ///
+    /// Enables simulation mode if `sim` is true and hardware flow control if `flow_control` is true.
+    pub fn new_async<T: Instance>(
+        _instance: Peri<'d, T>,
+        baud_rate: u32,
+        sim: bool,
+        flow_control: bool,
+        _irq: impl Binding<T::Interrupt, InterruptHandler<T>> + 'd,
+    ) -> Self {
+        Uart::<Async>::init(_instance, baud_rate, sim, flow_control);
+        // SAFETY: It is valid to enable UART interrupt here
+        unsafe { T::Interrupt::enable() }
+        Self::new_inner::<T>()
+    }
+
+    /// Writes a byte to TX FIFO.
+    pub async fn write_byte(&mut self, byte: u8) {
+        poll_fn(|cx| {
+            self.waker.register(cx.waker());
+            if !self.fifo_full() {
+                self.write_unchecked(byte);
+                Poll::Ready(())
+            } else {
+                // CS used here since interrupt modifies register
+                critical_section::with(|_| self.enable_irq_tx_nfull());
+                Poll::Pending
+            }
+        })
+        .await
+    }
+
+    /// Writes bytes from buffer to TX FIFO.
+    pub async fn write(&mut self, bytes: &[u8]) {
+        for byte in bytes {
+            self.write_byte(*byte).await;
+        }
     }
 }
 

@@ -3,7 +3,7 @@
 use embassy_neorv32::bind_interrupts;
 use embassy_neorv32::gptmr::{self, Gptmr, Prescaler};
 use embassy_neorv32::peripherals;
-use embassy_neorv32::uart::{self, Uart};
+use embassy_neorv32::uart::{self, UartTx};
 use panic_halt as _;
 
 bind_interrupts!(struct Irqs {
@@ -16,7 +16,7 @@ async fn main(_spawner: embassy_executor::Spawner) {
     let p = embassy_neorv32::init();
 
     // Setup UART for display purposes
-    let mut uart = Uart::new_async_tx(p.UART0, 19200, true, false, Irqs);
+    let mut uart = UartTx::new_async(p.UART0, 19200, true, false, Irqs);
 
     // Setup GPTMR
     let mut gptmr = Gptmr::new_async(p.GPTMR, Prescaler::Psc64, Irqs);

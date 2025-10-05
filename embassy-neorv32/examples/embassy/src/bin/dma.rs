@@ -4,7 +4,7 @@
 use embassy_neorv32::bind_interrupts;
 use embassy_neorv32::dma::{self, Dma};
 use embassy_neorv32::peripherals;
-use embassy_neorv32::uart::{self, Uart, UartTx};
+use embassy_neorv32::uart::{self, UartTx};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_sync::once_lock::OnceLock;
@@ -42,7 +42,7 @@ async fn main(spawner: embassy_executor::Spawner) {
     let p = embassy_neorv32::init();
 
     // Setup UART just for printing WDT state
-    let uart = Uart::new_async_tx(p.UART0, 19200, true, false, Irqs);
+    let uart = UartTx::new_async(p.UART0, 19200, true, false, Irqs);
     let uart = UART.get_or_init(|| Mutex::new(uart));
 
     // Setup DMA

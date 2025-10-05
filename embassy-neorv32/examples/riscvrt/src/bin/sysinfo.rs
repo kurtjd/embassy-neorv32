@@ -2,7 +2,7 @@
 #![no_main]
 use core::fmt::Write;
 use embassy_neorv32::sysinfo::SysInfo;
-use embassy_neorv32::uart::Uart;
+use embassy_neorv32::uart::UartTx;
 use panic_halt as _;
 
 #[riscv_rt::entry]
@@ -10,7 +10,7 @@ fn main() -> ! {
     let p = embassy_neorv32::init();
 
     // Setup UART for display purposes
-    let mut uart = Uart::new_blocking_tx(p.UART0, 19200, true, false);
+    let mut uart = UartTx::new_blocking(p.UART0, 19200, true, false);
 
     // Print clock frequency
     writeln!(
