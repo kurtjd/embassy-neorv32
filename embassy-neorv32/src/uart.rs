@@ -3,6 +3,7 @@ use crate::interrupt::typelevel::{Binding, Handler, Interrupt};
 use crate::peripherals::{UART0, UART1};
 use core::future::poll_fn;
 use core::marker::PhantomData;
+use core::sync::atomic::{AtomicBool, Ordering};
 use core::task::Poll;
 use embassy_hal_internal::{Peri, PeripheralType};
 use embassy_sync::waitqueue::AtomicWaker;
@@ -15,19 +16,33 @@ pub struct InterruptHandler<T: Instance> {
 impl<T: Instance> Handler<T::Interrupt> for InterruptHandler<T> {
     unsafe fn on_interrupt() {
         // If RX FIFO is not empty, disable RX not empty IRQ and wake RX task
-        if T::reg().ctrl().read().uart_ctrl_rx_nempty().bit_is_set() {
-            T::reg()
+        if T::info()
+            .reg
+            .ctrl()
+            .read()
+            .uart_ctrl_rx_nempty()
+            .bit_is_set()
+        {
+            T::info()
+                .reg
                 .ctrl()
                 .modify(|_, w| w.uart_ctrl_irq_rx_nempty().clear_bit());
-            T::rx_waker().wake();
+            T::info().rx_waker.wake();
         }
 
         // If TX FIFO is not full, disable TX not full IRQ and wake TX task
-        if T::reg().ctrl().read().uart_ctrl_tx_nfull().bit_is_set() {
-            T::reg()
+        if T::info()
+            .reg
+            .ctrl()
+            .read()
+            .uart_ctrl_tx_nfull()
+            .bit_is_set()
+        {
+            T::info()
+                .reg
                 .ctrl()
                 .modify(|_, w| w.uart_ctrl_irq_tx_nfull().clear_bit());
-            T::tx_waker().wake();
+            T::info().tx_waker.wake();
         }
     }
 }
@@ -42,14 +57,16 @@ impl<'d, M: IoMode> Uart<'d, M> {
     fn init<T: Instance>(_instance: Peri<'d, T>, baud_rate: u32, sim: bool, flow_control: bool) {
         // Enable simulation mode if applicable
         if sim {
-            T::reg()
+            T::info()
+                .reg
                 .ctrl()
                 .modify(|_, w| w.uart_ctrl_sim_mode().set_bit());
         }
 
         // Enable flow control if applicable
         if flow_control {
-            T::reg()
+            T::info()
+                .reg
                 .ctrl()
                 .modify(|_, w| w.uart_ctrl_hwfc_en().set_bit());
         }
@@ -69,7 +86,7 @@ impl<'d, M: IoMode> Uart<'d, M> {
         }
 
         // Set the clock and baudrate prescalers
-        T::reg().ctrl().modify(|_, w| unsafe {
+        T::info().reg.ctrl().modify(|_, w| unsafe {
             w.uart_ctrl_prsc()
                 .bits(prsc_sel & 0b111)
                 .uart_ctrl_baud()
@@ -77,7 +94,10 @@ impl<'d, M: IoMode> Uart<'d, M> {
         });
 
         // Enable UART
-        T::reg().ctrl().modify(|_, w| w.uart_ctrl_en().set_bit());
+        T::info()
+            .reg
+            .ctrl()
+            .modify(|_, w| w.uart_ctrl_en().set_bit());
     }
 
     fn new_inner<T: Instance>() -> Self {
@@ -181,32 +201,39 @@ impl<'d> Uart<'d, Async> {
 
 /// RX-only UART driver.
 pub struct UartRx<'d, M: IoMode> {
-    reg: &'static crate::pac::uart0::RegisterBlock,
-    waker: &'static AtomicWaker,
+    info: Info,
     _phantom: PhantomData<&'d M>,
 }
 
 impl<'d, M: IoMode> UartRx<'d, M> {
     fn new_inner<T: Instance>() -> Self {
+        // Mark RX as active
+        T::info().active.rx.store(true, Ordering::SeqCst);
+
         Self {
-            reg: T::reg(),
-            waker: T::rx_waker(),
+            info: T::info(),
             _phantom: PhantomData,
         }
     }
 
     fn read_unchecked(&self) -> u8 {
-        self.reg.data().read().bits() as u8
+        self.info.reg.data().read().bits() as u8
     }
 
     fn enable_irq_rx_nempty(&mut self) {
-        self.reg
+        self.info
+            .reg
             .ctrl()
             .modify(|_, w| w.uart_ctrl_irq_rx_nempty().set_bit());
     }
 
     fn fifo_empty(&self) -> bool {
-        self.reg.ctrl().read().uart_ctrl_rx_nempty().bit_is_clear()
+        self.info
+            .reg
+            .ctrl()
+            .read()
+            .uart_ctrl_rx_nempty()
+            .bit_is_clear()
     }
 
     /// Reads a byte from RX FIFO, blocking if empty.
@@ -256,7 +283,7 @@ impl<'d> UartRx<'d, Async> {
     /// Reads a byte from RX FIFO.
     pub async fn read_byte(&mut self) -> u8 {
         poll_fn(|cx| {
-            self.waker.register(cx.waker());
+            self.info.rx_waker.register(cx.waker());
             if !self.fifo_empty() {
                 Poll::Ready(self.read_unchecked())
             } else {
@@ -276,10 +303,16 @@ impl<'d> UartRx<'d, Async> {
     }
 }
 
+impl<'d, M: IoMode> Drop for UartRx<'d, M> {
+    fn drop(&mut self) {
+        self.info.active.rx.store(false, Ordering::SeqCst);
+        drop_rx_tx(&self.info);
+    }
+}
+
 /// TX-only UART driver.
 pub struct UartTx<'d, M: IoMode> {
-    reg: &'static crate::pac::uart0::RegisterBlock,
-    waker: &'static AtomicWaker,
+    info: Info,
     _phantom: PhantomData<&'d M>,
 }
 
@@ -288,26 +321,37 @@ unsafe impl<'d, M: IoMode> Send for UartTx<'d, M> {}
 
 impl<'d, M: IoMode> UartTx<'d, M> {
     fn new_inner<T: Instance>() -> Self {
+        // Mark TX as active
+        T::info().active.rx.store(true, Ordering::SeqCst);
+
         Self {
-            reg: T::reg(),
-            waker: T::tx_waker(),
+            info: T::info(),
             _phantom: PhantomData,
         }
     }
 
     fn write_unchecked(&mut self, byte: u8) {
         // SAFETY: We are just writing a byte, the MSB bits are read-only
-        self.reg.data().write(|w| unsafe { w.bits(byte as u32) });
+        self.info
+            .reg
+            .data()
+            .write(|w| unsafe { w.bits(byte as u32) });
     }
 
     fn enable_irq_tx_nfull(&mut self) {
-        self.reg
+        self.info
+            .reg
             .ctrl()
             .modify(|_, w| w.uart_ctrl_irq_tx_nfull().set_bit());
     }
 
     fn fifo_full(&self) -> bool {
-        self.reg.ctrl().read().uart_ctrl_tx_nfull().bit_is_clear()
+        self.info
+            .reg
+            .ctrl()
+            .read()
+            .uart_ctrl_tx_nfull()
+            .bit_is_clear()
     }
 
     /// Writes a byte to TX FIFO, blocking if full.
@@ -325,7 +369,7 @@ impl<'d, M: IoMode> UartTx<'d, M> {
 
     /// Blocks until all TX complete.
     pub fn flush(&mut self) {
-        while self.reg.ctrl().read().uart_ctrl_tx_busy().bit_is_set() {}
+        while self.info.reg.ctrl().read().uart_ctrl_tx_busy().bit_is_set() {}
     }
 }
 
@@ -364,7 +408,7 @@ impl<'d> UartTx<'d, Async> {
     /// Writes a byte to TX FIFO.
     pub async fn write_byte(&mut self, byte: u8) {
         poll_fn(|cx| {
-            self.waker.register(cx.waker());
+            self.info.tx_waker.register(cx.waker());
             if !self.fifo_full() {
                 self.write_unchecked(byte);
                 Poll::Ready(())
@@ -385,6 +429,20 @@ impl<'d> UartTx<'d, Async> {
     }
 }
 
+impl<'d, M: IoMode> Drop for UartTx<'d, M> {
+    fn drop(&mut self) {
+        self.info.active.tx.store(false, Ordering::SeqCst);
+        drop_rx_tx(&self.info);
+    }
+}
+
+fn drop_rx_tx(info: &Info) {
+    // Only disable UART if both Rx and Tx have been dropped
+    if !info.active.rx.load(Ordering::SeqCst) && !info.active.tx.load(Ordering::SeqCst) {
+        info.reg.ctrl().modify(|_, w| w.uart_ctrl_en().clear_bit());
+    }
+}
+
 // Convenience for writing formatted strings to UART
 // TODO: Other Embassy HALs don't seem to do this so look at other approaches
 impl<'d, M: IoMode> core::fmt::Write for UartTx<'d, M> {
@@ -392,6 +450,29 @@ impl<'d, M: IoMode> core::fmt::Write for UartTx<'d, M> {
         self.blocking_write(s.as_bytes());
         Ok(())
     }
+}
+
+// Serves as a "reference-counter" so we know when Uart is completely dropped
+// Use two AtomicBools instead of AtomicU8 since fetch_add/fetch_sub are not available without A extension
+struct Active {
+    rx: AtomicBool,
+    tx: AtomicBool,
+}
+
+impl Active {
+    const fn new() -> Self {
+        Self {
+            rx: AtomicBool::new(false),
+            tx: AtomicBool::new(false),
+        }
+    }
+}
+
+struct Info {
+    reg: &'static crate::pac::uart0::RegisterBlock,
+    active: &'static Active,
+    rx_waker: &'static AtomicWaker,
+    tx_waker: &'static AtomicWaker,
 }
 
 trait SealedIoMode {}
@@ -411,9 +492,7 @@ impl SealedIoMode for Async {}
 impl IoMode for Async {}
 
 trait SealedInstance {
-    fn reg() -> &'static crate::pac::uart0::RegisterBlock;
-    fn rx_waker() -> &'static AtomicWaker;
-    fn tx_waker() -> &'static AtomicWaker;
+    fn info() -> Info;
 }
 
 /// A valid UART peripheral.
@@ -427,21 +506,17 @@ macro_rules! impl_instance {
         impl SealedInstance for $periph {
             // Note: uart0 and uart1 can both share uart0::RegisterBlock
             // PAC is able to coerce uart1::ptr() to it with correct base address
-            #[inline(always)]
-            fn reg() -> &'static crate::pac::uart0::RegisterBlock {
-                unsafe { &*crate::pac::$rb::ptr() }
-            }
+            fn info() -> Info {
+                static RX_WAKER: AtomicWaker = AtomicWaker::new();
+                static TX_WAKER: AtomicWaker = AtomicWaker::new();
+                static ACTIVE: Active = Active::new();
 
-            #[inline(always)]
-            fn rx_waker() -> &'static AtomicWaker {
-                static WAKER: AtomicWaker = AtomicWaker::new();
-                &WAKER
-            }
-
-            #[inline(always)]
-            fn tx_waker() -> &'static AtomicWaker {
-                static WAKER: AtomicWaker = AtomicWaker::new();
-                &WAKER
+                Info {
+                    reg: unsafe { &*crate::pac::$rb::ptr() },
+                    active: &ACTIVE,
+                    rx_waker: &RX_WAKER,
+                    tx_waker: &TX_WAKER,
+                }
             }
         }
         impl Instance for $periph {
