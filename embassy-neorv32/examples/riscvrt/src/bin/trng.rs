@@ -17,8 +17,6 @@ fn main() -> ! {
     if trng.sim_mode() {
         uart.blocking_write(b"Running in simulation so PRNG is used\n");
     }
-    let fifo_depth = trng.fifo_depth();
-    writeln!(&mut uart, "TRNG FIFO depth: {fifo_depth}").unwrap();
 
     loop {
         let rand = trng.blocking_read_byte();

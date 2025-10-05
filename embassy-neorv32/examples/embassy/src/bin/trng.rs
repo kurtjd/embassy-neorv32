@@ -25,8 +25,6 @@ async fn main(_spawner: embassy_executor::Spawner) {
     if trng.sim_mode() {
         uart.write(b"Running in simulation so PRNG is used\n").await;
     }
-    let fifo_depth = trng.fifo_depth();
-    writeln!(&mut uart, "TRNG FIFO depth: {fifo_depth}").unwrap();
 
     loop {
         // Make buffer slightly large to ensure interrupt is triggered
