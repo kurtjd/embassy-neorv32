@@ -14,10 +14,10 @@ pub mod wdt;
 // Peripherals and interrupts supported by the NEORV32 chip
 mod chip {
     pub use neorv32_pac as pac;
-    // TODO: List all 32 ports
+    // TODO: List all 32 gpio ports
     embassy_hal_internal::peripherals!(CLINT, WDT, UART0, UART1, GPTMR, TRNG, DMA, GPIO, PORT0);
     pub mod interrupts {
-        crate::interrupt_mod!(UART0, UART1, TRNG, DMA, GPTMR, GPIO);
+        crate::interrupt_mod!(UART0, UART1, TRNG, DMA, GPIO);
     }
 }
 
