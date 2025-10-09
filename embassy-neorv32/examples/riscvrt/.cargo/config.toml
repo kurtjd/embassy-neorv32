@@ -1,5 +1,6 @@
-[target.riscv32i-unknown-none-elf]
-runner = "./../run-sim"
+[target.riscv32imc-unknown-none-elf]
+#runner = "./../run-sim"
+runner = "./../run-bl"
 
 rustflags = [
     "-C",
@@ -12,4 +13,4 @@ rustflags = [
 
 # neorv32 supports quite a few ISA extensions but good for dev to keep it minimal
 [build]
-target = "riscv32i-unknown-none-elf"
+target = "riscv32imc-unknown-none-elf"

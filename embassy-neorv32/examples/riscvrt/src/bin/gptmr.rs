@@ -14,6 +14,7 @@ fn gptmr_handler() {
     let uart = unsafe { &*pac::Uart0::ptr() };
     for c in b"!\n" {
         // SAFETY: We are writing a valid byte
+        // Assumes FIFO >= 2
         uart.data().write(|w| unsafe { w.bits(*c as u32) });
     }
 }
@@ -23,13 +24,13 @@ fn main() -> ! {
     let p = embassy_neorv32::init();
 
     // Setup UART for display purposes (unsafely write to it in ISR)
-    let _ = UartTx::new_blocking(p.UART0, 19200, true, false);
+    let _ = UartTx::new_blocking(p.UART0, 19200, false, false);
 
     // Setup GPTMR
     // SAFETY: Enabling the GPTMR interrupt here is valid
     unsafe { riscv::interrupt::enable_interrupt(pac::interrupt::CoreInterrupt::GPTMR) }
     let mut gptmr = Gptmr::new(p.GPTMR, Prescaler::Psc64);
-    gptmr.set_threshold(1000);
+    gptmr.set_threshold(1_000_000);
     gptmr.enable();
 
     // Do nothing unless gptmr interrupt triggers

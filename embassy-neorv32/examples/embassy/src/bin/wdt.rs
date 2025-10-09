@@ -12,11 +12,11 @@ async fn main(_spawner: embassy_executor::Spawner) {
     let p = embassy_neorv32::init();
 
     // Setup UART just for printing WDT state
-    let mut uart = UartTx::new_blocking(p.UART0, 19200, true, false);
+    let mut uart = UartTx::new_blocking(p.UART0, 19200, false, false);
 
     // Setup WDT with timeout of 1ms and enable it then lock it
     let wdt = Wdt::new(p.WDT);
-    wdt.set_timeout_ms(1);
+    wdt.set_timeout_ms(1000);
     wdt.enable();
     let wdt = wdt.lock();
 
@@ -39,7 +39,7 @@ async fn main(_spawner: embassy_executor::Spawner) {
     for _ in 0..10 {
         uart.blocking_write(b"Feeding watchdog...\n");
         wdt.feed();
-        Timer::after_micros(200).await;
+        Timer::after_millis(500).await;
     }
     uart.blocking_write(b"Waiting for watchdog timeout...\n");
 }

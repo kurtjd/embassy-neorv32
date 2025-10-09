@@ -22,9 +22,10 @@ static UART: OnceLock<UartMutex> = OnceLock::new();
 #[embassy_executor::task]
 async fn dma_transfer(mut dma: Dma<'static>, uart: &'static UartMutex) {
     loop {
-        let src = [42u8; 2048];
-        let mut dst = [69u8; 2048];
+        let src = [42u8; 1024];
+        let mut dst = [69u8; 1024];
 
+        uart.lock().await.write(b"DMA transfer started..\n").await;
         let res = dma.copy(&src, &mut dst, false).await;
         {
             let mut uart = uart.lock().await;
@@ -34,6 +35,8 @@ async fn dma_transfer(mut dma: Dma<'static>, uart: &'static UartMutex) {
                 uart.write(b"DMA transfer failed\n").await;
             }
         }
+
+        Timer::after_secs(2).await;
     }
 }
 
@@ -42,7 +45,7 @@ async fn main(spawner: embassy_executor::Spawner) {
     let p = embassy_neorv32::init();
 
     // Setup UART just for printing WDT state
-    let uart = UartTx::new_async(p.UART0, 19200, true, false, Irqs);
+    let uart = UartTx::new_async(p.UART0, 19200, false, false, Irqs);
     let uart = UART.get_or_init(|| Mutex::new(uart));
 
     // Setup DMA
@@ -51,6 +54,6 @@ async fn main(spawner: embassy_executor::Spawner) {
 
     loop {
         uart.lock().await.write(b"Doing some work...\n").await;
-        Timer::after_micros(10).await;
+        Timer::after_secs(1).await;
     }
 }

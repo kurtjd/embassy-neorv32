@@ -18,7 +18,7 @@ async fn main(_spawner: embassy_executor::Spawner) {
     let p = embassy_neorv32::init();
 
     // Setup UART for display purposes
-    let mut uart = UartTx::new_async(p.UART0, 19200, true, false, Irqs);
+    let mut uart = UartTx::new_async(p.UART0, 19200, false, false, Irqs);
 
     // Setup async TRNG
     let mut trng = Trng::new_async(p.TRNG, Irqs);
@@ -37,6 +37,6 @@ async fn main(_spawner: embassy_executor::Spawner) {
 
         writeln!(&mut uart, "Random word1: 0x{word1:08X}").unwrap();
         writeln!(&mut uart, "Random word2: 0x{word2:08X}").unwrap();
-        Timer::after_micros(200).await;
+        Timer::after_secs(1).await;
     }
 }

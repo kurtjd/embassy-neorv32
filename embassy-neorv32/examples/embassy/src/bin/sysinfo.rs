@@ -10,7 +10,7 @@ async fn main(_spawner: embassy_executor::Spawner) {
     let p = embassy_neorv32::init();
 
     // Setup UART for display purposes
-    let mut uart = UartTx::new_blocking(p.UART0, 19200, true, false);
+    let mut uart = UartTx::new_blocking(p.UART0, 19200, false, false);
 
     // Print clock frequency
     writeln!(

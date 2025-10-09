@@ -25,5 +25,11 @@ embassy-sync = "0.7.2"
 embassy-futures = "0.1.2"
 embassy-hal-internal = "0.3.0"
 
+embedded-hal-02 = { package = "embedded-hal", version = "0.2.7", features = [
+    "unproven",
+] }
+embedded-hal-1 = { package = "embedded-hal", version = "1.0" }
+embedded-hal-async = "1.0"
+
 critical-section = "1.2.0"
 defmt = { version = "1.0.1", optional = true }

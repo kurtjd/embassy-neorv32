@@ -9,17 +9,17 @@ Embassy support. Main focus now is on building the synchronous/blocking HAL befo
 Still quite a bit to do to get all peripherals fully supported, however the `embassy-neorv32/examples`
 folder can serve as a good base for running general Rust code on a simulated NEORV32.
 
-This is currently being built to only support a single-core, rv32i, CLINT-enabled, cacheless configuration.
+This is currently being built to only support a single-core, rv32i, CLINT-enabled configuration.
 Planning to investigate support for a "max" configuration in the future.
 
 ## Peripherals Currently Supported
 - SysInfo
 - WDT
-- DMA
 - GPTMR
+- Async DMA
+- Blocking and Async GPIO
 - Blocking and Async UART
 - Blocking and Async TRNG
-- Rough draft Blocking and Async GPIO
 
 ## TODO
 - Iron out a few kinks in the SVD, svd2rust, and riscv-rt
