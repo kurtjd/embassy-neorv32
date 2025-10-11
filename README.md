@@ -16,6 +16,7 @@ Planning to investigate support for a "max" configuration in the future.
 - SysInfo
 - WDT
 - GPTMR
+- PWM
 - Async DMA
 - Blocking and Async GPIO
 - Blocking and Async UART
