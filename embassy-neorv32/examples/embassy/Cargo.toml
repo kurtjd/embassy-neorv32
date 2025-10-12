@@ -23,3 +23,7 @@ embedded-hal-02 = { package = "embedded-hal", version = "0.2.7", features = [
     "unproven",
 ] }
 embedded-hal-1 = { package = "embedded-hal", version = "1.0" }
+embedded-hal-bus = { version = "0.3.0", features = ["async"] }
+
+#is31fl3743b-driver = { version = "0.1.1", features = ["is_blocking"] }
+is31fl3743b-driver = { version = "0.1.1" }

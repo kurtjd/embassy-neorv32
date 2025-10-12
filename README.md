@@ -18,6 +18,7 @@ Planning to investigate support for a "max" configuration in the future.
 - GPTMR
 - PWM
 - Async DMA
+- Blocking and Async SPI
 - Blocking and Async GPIO
 - Blocking and Async UART
 - Blocking and Async TRNG
