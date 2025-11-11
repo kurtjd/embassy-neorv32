@@ -1,6 +1,6 @@
 [target.riscv32imc-unknown-none-elf]
-#runner = "./../run-sim"
-runner = "./../run-bl"
+#runner = "./run-sim"
+runner = "./run-bl"
 
 rustflags = [
     "-C",
