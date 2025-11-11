@@ -1,9 +1,8 @@
 MEMORY
 {
   /* Lengths should match the values set in neorv32_tb. */
-  /* These are the default values. */
-  FLASH : ORIGIN = 0x00000000, LENGTH = 32K
-  RAM : ORIGIN = 0x80000000, LENGTH = 8K
+  FLASH : ORIGIN = 0x00000000, LENGTH = 64K
+  RAM : ORIGIN = 0x80000000, LENGTH = 16K
 }
 
 REGION_ALIAS("REGION_TEXT", FLASH);

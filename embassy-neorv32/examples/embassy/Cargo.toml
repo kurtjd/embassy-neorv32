@@ -5,6 +5,14 @@ name = "neorv32-embassy-examples"
 version = "0.1.0"
 edition = "2024"
 
+[profile.release]
+lto = true
+codegen-units = 1
+debug = true
+opt-level = "z"
+panic = "abort"
+incremental = false
+
 [dependencies]
 embassy-executor = { version = "0.9.1", features = [
     "arch-riscv32",
@@ -25,5 +33,5 @@ embedded-hal-02 = { package = "embedded-hal", version = "0.2.7", features = [
 embedded-hal-1 = { package = "embedded-hal", version = "1.0" }
 embedded-hal-bus = { version = "0.3.0", features = ["async"] }
 
-#is31fl3743b-driver = { version = "0.1.1", features = ["is_blocking"] }
 is31fl3743b-driver = { version = "0.1.1" }
+lm75 = "1.0.0"
