@@ -128,8 +128,8 @@ impl<'d, M: IoMode> Uart<'d, M> {
     }
 
     /// Blocks until all TX complete.
-    pub fn tx_flush(&mut self) {
-        self.tx.flush();
+    pub fn blocking_flush(&mut self) {
+        self.tx.blocking_flush();
     }
 
     /// Splits the UART driver into separate [UartRx] and [UartTx] drivers.
@@ -369,7 +369,7 @@ impl<'d, M: IoMode> UartTx<'d, M> {
     }
 
     /// Blocks until all TX complete.
-    pub fn flush(&mut self) {
+    pub fn blocking_flush(&mut self) {
         while self.info.reg.ctrl().read().uart_ctrl_tx_busy().bit_is_set() {}
     }
 }
@@ -441,15 +441,6 @@ fn drop_rx_tx(info: &Info) {
     // Only disable UART if both Rx and Tx have been dropped
     if !info.active.rx.load(Ordering::SeqCst) && !info.active.tx.load(Ordering::SeqCst) {
         info.reg.ctrl().modify(|_, w| w.uart_ctrl_en().clear_bit());
-    }
-}
-
-// Convenience for writing formatted strings to UART
-// TODO: Other Embassy HALs don't seem to do this so look at other approaches
-impl<'d, M: IoMode> core::fmt::Write for UartTx<'d, M> {
-    fn write_str(&mut self, s: &str) -> core::fmt::Result {
-        self.blocking_write(s.as_bytes());
-        Ok(())
     }
 }
 
@@ -528,3 +519,124 @@ macro_rules! impl_instance {
 
 impl_instance!(UART0, Uart0);
 impl_instance!(UART1, Uart1);
+
+// Convenience for writing formatted strings to UART
+impl<'d, M: IoMode> core::fmt::Write for UartTx<'d, M> {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        self.blocking_write(s.as_bytes());
+        Ok(())
+    }
+}
+
+impl<'d, M: IoMode> embedded_hal_02::blocking::serial::Write<u8> for Uart<'d, M> {
+    type Error = core::convert::Infallible;
+
+    fn bwrite_all(&mut self, buffer: &[u8]) -> Result<(), Self::Error> {
+        self.blocking_write(buffer);
+        Ok(())
+    }
+
+    fn bflush(&mut self) -> Result<(), Self::Error> {
+        self.blocking_flush();
+        Ok(())
+    }
+}
+
+impl<'d, M: IoMode> embedded_hal_02::blocking::serial::Write<u8> for UartTx<'d, M> {
+    type Error = core::convert::Infallible;
+
+    fn bwrite_all(&mut self, buffer: &[u8]) -> Result<(), Self::Error> {
+        self.blocking_write(buffer);
+        Ok(())
+    }
+
+    fn bflush(&mut self) -> Result<(), Self::Error> {
+        self.blocking_flush();
+        Ok(())
+    }
+}
+
+impl<'d, M: IoMode> embedded_io::ErrorType for Uart<'d, M> {
+    type Error = core::convert::Infallible;
+}
+
+impl<'d, M: IoMode> embedded_io::Read for Uart<'d, M> {
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
+        self.rx.read(buf)
+    }
+}
+
+impl<'d, M: IoMode> embedded_io::Write for Uart<'d, M> {
+    fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
+        self.tx.write(buf)
+    }
+
+    fn flush(&mut self) -> Result<(), Self::Error> {
+        self.tx.flush()
+    }
+}
+
+impl<'d, M: IoMode> embedded_io::ErrorType for UartTx<'d, M> {
+    type Error = core::convert::Infallible;
+}
+
+impl<'d, M: IoMode> embedded_io::Write for UartTx<'d, M> {
+    fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
+        // Immediately return if empty buffer without blocking
+        if buf.is_empty() {
+            return Ok(0);
+        }
+
+        // Must block until at least the first byte can be written
+        while self.fifo_full() {}
+
+        // But then only write bytes that can fit into FIFO
+        let mut n = 0;
+        for byte in buf {
+            self.write_unchecked(*byte);
+            n += 1;
+
+            if self.fifo_full() {
+                break;
+            }
+        }
+
+        // And finally return the number of bytes actually written
+        Ok(n)
+    }
+
+    fn flush(&mut self) -> Result<(), Self::Error> {
+        self.blocking_flush();
+        Ok(())
+    }
+}
+
+impl<'d, M: IoMode> embedded_io::ErrorType for UartRx<'d, M> {
+    type Error = core::convert::Infallible;
+}
+
+impl<'d, M: IoMode> embedded_io::Read for UartRx<'d, M> {
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
+        // Immediately return if empty buffer without blocking
+        if buf.is_empty() {
+            return Ok(0);
+        }
+
+        // Must block until at least the first byte is available
+        while self.fifo_empty() {}
+
+        // But then only read bytes that are immediately available without blocking
+        let mut n = 0;
+        for byte in buf {
+            *byte = self.read_unchecked();
+            n += 1;
+
+            if self.fifo_empty() {
+                break;
+            }
+        }
+
+        // And finally return the number of bytes actually read
+        Ok(n)
+    }
+}

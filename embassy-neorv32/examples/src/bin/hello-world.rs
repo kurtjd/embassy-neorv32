@@ -42,10 +42,8 @@ async fn print_logo(uart: &mut UartTx<'static, uart::Async>) {
 async fn main(_spawner: embassy_executor::Spawner) {
     let p = embassy_neorv32::init();
 
-    // Setup UART in simulation mode with no HW flow control and arbitrary baud rate (since sim is immediately prints)
-    // Note: In simulation async UART is noticeably slower than blocking since there is a bit of overhead,
-    // but writes are instantaneous so we don't get any benefits for that overhead.
-    let mut uart = UartTx::new_async(p.UART0, 19200, true, false, Irqs);
+    // Setup UART in regular (non-simulated) mode with no HW flow control and baud rate of 19200
+    let mut uart = UartTx::new_async(p.UART0, 19200, false, false, Irqs);
     print_logo(&mut uart).await;
 
     // Note: '\n' seems necessary for UART writes for sim to flush output
