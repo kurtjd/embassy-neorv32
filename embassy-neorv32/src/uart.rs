@@ -16,13 +16,20 @@ pub struct InterruptHandler<T: Instance> {
 impl<T: Instance> Handler<T::Interrupt> for InterruptHandler<T> {
     unsafe fn on_interrupt() {
         // If RX FIFO is not empty, disable RX not empty IRQ and wake RX task
-        if T::info()
+        let rx_nempty_irq_set = T::info()
+            .reg
+            .ctrl()
+            .read()
+            .uart_ctrl_irq_rx_nempty()
+            .bit_is_set();
+        let rx_nempty = T::info()
             .reg
             .ctrl()
             .read()
             .uart_ctrl_rx_nempty()
-            .bit_is_set()
-        {
+            .bit_is_set();
+
+        if rx_nempty_irq_set && rx_nempty {
             T::info()
                 .reg
                 .ctrl()
@@ -30,18 +37,51 @@ impl<T: Instance> Handler<T::Interrupt> for InterruptHandler<T> {
             T::info().rx_waker.wake();
         }
 
+        // Note: For below, only one TX type IRQ will be active at a time
+        // (waiting for a room in the TX fifo or waiting for TX flush),
+        // hence it is okay to use the TX waker for both.
+
         // If TX FIFO is not full, disable TX not full IRQ and wake TX task
-        if T::info()
+        let tx_nfull_irq_set = T::info()
+            .reg
+            .ctrl()
+            .read()
+            .uart_ctrl_irq_tx_nfull()
+            .bit_is_set();
+        let tx_nfull = T::info()
             .reg
             .ctrl()
             .read()
             .uart_ctrl_tx_nfull()
-            .bit_is_set()
-        {
+            .bit_is_set();
+
+        if tx_nfull_irq_set && tx_nfull {
             T::info()
                 .reg
                 .ctrl()
                 .modify(|_, w| w.uart_ctrl_irq_tx_nfull().clear_bit());
+            T::info().tx_waker.wake();
+        }
+
+        // If TX FIFO is empty, disable TX empty IRQ and wake TX task
+        let tx_empty_irq_set = T::info()
+            .reg
+            .ctrl()
+            .read()
+            .uart_ctrl_irq_tx_empty()
+            .bit_is_set();
+        let tx_empty = T::info()
+            .reg
+            .ctrl()
+            .read()
+            .uart_ctrl_tx_empty()
+            .bit_is_set();
+
+        if tx_empty_irq_set && tx_empty {
+            T::info()
+                .reg
+                .ctrl()
+                .modify(|_, w| w.uart_ctrl_irq_tx_empty().clear_bit());
             T::info().tx_waker.wake();
         }
     }
@@ -198,6 +238,11 @@ impl<'d> Uart<'d, Async> {
     pub fn write(&mut self, bytes: &[u8]) -> impl Future<Output = ()> {
         self.tx.write(bytes)
     }
+
+    /// Waits until all TX complete.
+    pub fn flush(&mut self) -> impl Future<Output = ()> {
+        self.tx.flush()
+    }
 }
 
 /// RX-only UART driver.
@@ -219,6 +264,20 @@ impl<'d, M: IoMode> UartRx<'d, M> {
 
     fn read_unchecked(&self) -> u8 {
         self.info.reg.data().read().bits() as u8
+    }
+
+    fn read_until_empty(&self, buf: &mut [u8]) -> usize {
+        let mut n = 0;
+        for byte in buf {
+            *byte = self.read_unchecked();
+            n += 1;
+
+            if self.fifo_empty() {
+                break;
+            }
+        }
+
+        n
     }
 
     fn enable_irq_rx_nempty(&mut self) {
@@ -266,6 +325,20 @@ impl<'d> UartRx<'d, Blocking> {
 }
 
 impl<'d> UartRx<'d, Async> {
+    async fn wait_fifo_nempty(&mut self) {
+        poll_fn(|cx| {
+            self.info.rx_waker.register(cx.waker());
+            if !self.fifo_empty() {
+                Poll::Ready(())
+            } else {
+                // CS used here since interrupt modifies register
+                critical_section::with(|_| self.enable_irq_rx_nempty());
+                Poll::Pending
+            }
+        })
+        .await
+    }
+
     /// Creates a new RX-only async UART driver with given baud rate.
     ///
     /// Enables hardware flow control if `flow_control` is true.
@@ -283,17 +356,8 @@ impl<'d> UartRx<'d, Async> {
 
     /// Reads a byte from RX FIFO.
     pub async fn read_byte(&mut self) -> u8 {
-        poll_fn(|cx| {
-            self.info.rx_waker.register(cx.waker());
-            if !self.fifo_empty() {
-                Poll::Ready(self.read_unchecked())
-            } else {
-                // CS used here since interrupt modifies register
-                critical_section::with(|_| self.enable_irq_rx_nempty());
-                Poll::Pending
-            }
-        })
-        .await
+        self.wait_fifo_nempty().await;
+        self.read_unchecked()
     }
 
     /// Reads bytes from RX FIFO until buffer is full.
@@ -317,7 +381,7 @@ pub struct UartTx<'d, M: IoMode> {
     _phantom: PhantomData<&'d M>,
 }
 
-// TODO: Revisit soundness of this
+// Revisit: Soundness of this?
 unsafe impl<'d, M: IoMode> Send for UartTx<'d, M> {}
 
 impl<'d, M: IoMode> UartTx<'d, M> {
@@ -339,11 +403,34 @@ impl<'d, M: IoMode> UartTx<'d, M> {
             .write(|w| unsafe { w.bits(byte as u32) });
     }
 
+    fn write_until_full(&mut self, buf: &[u8]) -> usize {
+        // But then only write bytes that can fit into FIFO
+        let mut n = 0;
+        for byte in buf {
+            self.write_unchecked(*byte);
+            n += 1;
+
+            if self.fifo_full() {
+                break;
+            }
+        }
+
+        // And finally return the number of bytes actually written
+        n
+    }
+
     fn enable_irq_tx_nfull(&mut self) {
         self.info
             .reg
             .ctrl()
             .modify(|_, w| w.uart_ctrl_irq_tx_nfull().set_bit());
+    }
+
+    fn enable_irq_tx_empty(&mut self) {
+        self.info
+            .reg
+            .ctrl()
+            .modify(|_, w| w.uart_ctrl_irq_tx_empty().set_bit());
     }
 
     fn fifo_full(&self) -> bool {
@@ -353,6 +440,15 @@ impl<'d, M: IoMode> UartTx<'d, M> {
             .read()
             .uart_ctrl_tx_nfull()
             .bit_is_clear()
+    }
+
+    fn fifo_empty(&self) -> bool {
+        self.info
+            .reg
+            .ctrl()
+            .read()
+            .uart_ctrl_irq_tx_empty()
+            .bit_is_set()
     }
 
     /// Writes a byte to TX FIFO, blocking if full.
@@ -390,6 +486,20 @@ impl<'d> UartTx<'d, Blocking> {
 }
 
 impl<'d> UartTx<'d, Async> {
+    async fn wait_fifo_nfull(&mut self) {
+        poll_fn(|cx| {
+            self.info.tx_waker.register(cx.waker());
+            if !self.fifo_full() {
+                Poll::Ready(())
+            } else {
+                // CS used here since interrupt modifies register
+                critical_section::with(|_| self.enable_irq_tx_nfull());
+                Poll::Pending
+            }
+        })
+        .await
+    }
+
     /// Creates a new TX-only async UART driver with given baud rate.
     ///
     /// Enables simulation mode if `sim` is true and hardware flow control if `flow_control` is true.
@@ -408,18 +518,8 @@ impl<'d> UartTx<'d, Async> {
 
     /// Writes a byte to TX FIFO.
     pub async fn write_byte(&mut self, byte: u8) {
-        poll_fn(|cx| {
-            self.info.tx_waker.register(cx.waker());
-            if !self.fifo_full() {
-                self.write_unchecked(byte);
-                Poll::Ready(())
-            } else {
-                // CS used here since interrupt modifies register
-                critical_section::with(|_| self.enable_irq_tx_nfull());
-                Poll::Pending
-            }
-        })
-        .await
+        self.wait_fifo_nfull().await;
+        self.write_unchecked(byte);
     }
 
     /// Writes bytes from buffer to TX FIFO.
@@ -427,6 +527,21 @@ impl<'d> UartTx<'d, Async> {
         for byte in bytes {
             self.write_byte(*byte).await;
         }
+    }
+
+    /// Waits until all TX complete.
+    pub async fn flush(&mut self) {
+        poll_fn(|cx| {
+            self.info.tx_waker.register(cx.waker());
+            if self.fifo_empty() {
+                Poll::Ready(())
+            } else {
+                // CS used here since interrupt modifies register
+                critical_section::with(|_| self.enable_irq_tx_empty());
+                Poll::Pending
+            }
+        })
+        .await
     }
 }
 
@@ -562,17 +677,33 @@ impl<'d, M: IoMode> embedded_io::ErrorType for Uart<'d, M> {
 
 impl<'d, M: IoMode> embedded_io::Read for Uart<'d, M> {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
-        self.rx.read(buf)
+        embedded_io::Read::read(&mut self.rx, buf)
+    }
+}
+
+impl<'d> embedded_io_async::Read for Uart<'d, Async> {
+    fn read(&mut self, buf: &mut [u8]) -> impl Future<Output = Result<usize, Self::Error>> {
+        embedded_io_async::Read::read(&mut self.rx, buf)
     }
 }
 
 impl<'d, M: IoMode> embedded_io::Write for Uart<'d, M> {
     fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
-        self.tx.write(buf)
+        embedded_io::Write::write(&mut self.tx, buf)
     }
 
     fn flush(&mut self) -> Result<(), Self::Error> {
-        self.tx.flush()
+        embedded_io::Write::flush(&mut self.tx)
+    }
+}
+
+impl<'d> embedded_io_async::Write for Uart<'d, Async> {
+    fn write(&mut self, buf: &[u8]) -> impl Future<Output = Result<usize, Self::Error>> {
+        embedded_io_async::Write::write(&mut self.tx, buf)
+    }
+
+    fn flush(&mut self) -> impl Future<Output = Result<(), Self::Error>> {
+        embedded_io_async::Write::flush(&mut self.tx)
     }
 }
 
@@ -591,22 +722,31 @@ impl<'d, M: IoMode> embedded_io::Write for UartTx<'d, M> {
         while self.fifo_full() {}
 
         // But then only write bytes that can fit into FIFO
-        let mut n = 0;
-        for byte in buf {
-            self.write_unchecked(*byte);
-            n += 1;
-
-            if self.fifo_full() {
-                break;
-            }
-        }
-
-        // And finally return the number of bytes actually written
-        Ok(n)
+        Ok(self.write_until_full(buf))
     }
 
     fn flush(&mut self) -> Result<(), Self::Error> {
         self.blocking_flush();
+        Ok(())
+    }
+}
+
+impl<'d> embedded_io_async::Write for UartTx<'d, Async> {
+    async fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
+        // Immediately return if empty buffer without blocking
+        if buf.is_empty() {
+            return Ok(0);
+        }
+
+        // Must block until at least the first byte can be written
+        self.wait_fifo_nfull().await;
+
+        // But then only write bytes that can fit into FIFO
+        Ok(self.write_until_full(buf))
+    }
+
+    async fn flush(&mut self) -> Result<(), Self::Error> {
+        self.flush().await;
         Ok(())
     }
 }
@@ -622,21 +762,25 @@ impl<'d, M: IoMode> embedded_io::Read for UartRx<'d, M> {
             return Ok(0);
         }
 
-        // Must block until at least the first byte is available
+        // Must block until at least one byte is available
         while self.fifo_empty() {}
 
-        // But then only read bytes that are immediately available without blocking
-        let mut n = 0;
-        for byte in buf {
-            *byte = self.read_unchecked();
-            n += 1;
+        // But then only read bytes that are immediately available
+        Ok(self.read_until_empty(buf))
+    }
+}
 
-            if self.fifo_empty() {
-                break;
-            }
+impl<'d> embedded_io_async::Read for UartRx<'d, Async> {
+    async fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
+        // Immediately return if empty buffer without blocking
+        if buf.is_empty() {
+            return Ok(0);
         }
 
-        // And finally return the number of bytes actually read
-        Ok(n)
+        // Must wait until at least one byte is available
+        self.wait_fifo_nempty().await;
+
+        // But then only read bytes that are immediately available
+        Ok(self.read_until_empty(buf))
     }
 }
