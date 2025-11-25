@@ -12,5 +12,5 @@ REGION_ALIAS("REGION_BSS", RAM);
 REGION_ALIAS("REGION_HEAP", RAM);
 REGION_ALIAS("REGION_STACK", RAM);
 
-/* TODO: Investigate why a value of 0 causes hang even with dual-core disabled (so only hart 0) */
-_max_hart_id = 1;
+// Only support single-core for now
+_max_hart_id = 0;
