@@ -186,3 +186,5 @@ riscv_config:
     mtime_freq: 100000000
 
   base_isa: "rv32i"
+  
+  mtvec_align: 128

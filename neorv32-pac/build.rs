@@ -14,6 +14,8 @@ fn main() {
         println!("cargo:rerun-if-changed=device.x");
         println!("cargo:rustc-env=RISCV_RT_BASE_ISA=rv32i");
         println!("cargo:rerun-if-env-changed=RISCV_RT_BASE_ISA");
+        println!("cargo:rustc-env=RISCV_MTVEC_ALIGN=128");
+        println!("cargo:rerun-if-env-changed=RISCV_MTVEC_ALIGN");
     }
     println!("cargo:rerun-if-changed=build.rs");
 }
