@@ -9,6 +9,8 @@ fn main() {
     fs::write(out_dir.join("memory.x"), include_bytes!("memory.x")).unwrap();
     println!("cargo:rustc-link-search={}", out_dir.display());
     println!("cargo:rerun-if-changed=memory.x");
-
     println!("cargo:rerun-if-changed=build.rs");
+
+    println!("cargo:rustc-env=RISCV_RT_BASE_ISA=rv32i");
+    println!("cargo:rerun-if-env-changed=RISCV_RT_BASE_ISA");
 }
