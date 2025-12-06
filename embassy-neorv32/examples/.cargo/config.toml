@@ -3,14 +3,7 @@
 # runner = "./run-sim"
 runner = "./run-bl"
 
-rustflags = [
-    "-C",
-    "link-arg=-Tmemory.x",
-    "-C",
-    "link-arg=-Tlink.x",
-    "-C",
-    "link-arg=--nmagic",
-]
+rustflags = ["-C", "link-arg=-Tlink.x", "-C", "link-arg=--nmagic"]
 
 # neorv32 supports quite a few ISA extensions but good for dev to keep it minimal
 [build]
