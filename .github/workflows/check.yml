@@ -1,0 +1,118 @@
+# This workflow runs whenever a PR is opened or updated, or a commit is pushed to main. It runs
+# several checks:
+# - fmt: checks that the code is formatted according to rustfmt
+# - doc: checks that the code can be documented without errors
+# - hack: check combinations of feature flags for errors (including clippy warnings)
+# - clippy-std-examples: checks that std examples contain no clippy warnings
+permissions:
+  contents: read
+# This configuration allows maintainers of this repo to create a branch and pull request based on
+# the new branch. Restricting the push trigger to the main branch ensures that the PR only gets
+# built once.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+    inputs:
+      download-lockfiles:
+        required: false
+        type: boolean
+        default: false
+# If new code is pushed to a PR branch, then cancel in progress workflows for that PR. Ensures that
+# we don't waste CI time, and returns results quicker https://github.com/jonhoo/rust-ci-conf/pull/5
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+name: check
+jobs:
+
+  fmt:
+    runs-on: ubuntu-latest
+    name: stable / fmt
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Install stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: cargo fmt --check
+        run: cargo fmt --check
+
+  doc:
+    # run docs generation on nightly rather than stable. This enables features like
+    # https://doc.rust-lang.org/beta/unstable-book/language-features/doc-cfg.html which allows an
+    # API be documented as only available in some specific platforms.
+    runs-on: ubuntu-latest
+    name: nightly / doc
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Install nightly
+        uses: dtolnay/rust-toolchain@nightly
+      - name: cargo doc
+        run: |
+          cargo doc -p embassy-neorv32 -F single-hart --locked
+          cargo doc -p embassy-neorv32 -F dual-hart --locked
+          cargo doc -p neorv32-pac -F v-trap --locked
+        env:
+          RUSTDOCFLAGS: --cfg docsrs
+
+  hack-clippy:
+    # cargo-hack checks combinations of feature flags to ensure that features are all additive
+    # which is required for feature unification
+    # additionally, replacing `check` with `clippy` ensures all combinations of features generate no clippy warnings
+    runs-on: ubuntu-latest
+    name: ${{ matrix.toolchain }} / clippy
+    strategy:
+      fail-fast: false
+      matrix:
+        # Get early warning of new lints which are regularly introduced in beta channels.
+        toolchain: [stable, beta]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Install ${{ matrix.toolchain }}
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.toolchain }}
+          components: clippy
+      - name: cargo install cargo-hack
+        uses: taiki-e/install-action@cargo-hack
+      - name: Download Cargo.lock files
+        if: ${{ inputs.download-lockfiles }}
+        uses: actions/download-artifact@v4
+        with:
+          name: updated-lock-files
+      # intentionally no target specifier; see https://github.com/jonhoo/rust-ci-conf/pull/4
+      # --feature-powerset runs for every combination of features
+      - name: cargo hack
+        run:
+          cargo hack -p embassy-neorv32 --feature-powerset --mutually-exclusive-features=single-hart,dual-hart clippy --locked
+          cargo hack -p neorv32-pac --feature-powerset clippy --locked
+
+  check-examples:
+    runs-on: ubuntu-latest
+    # we use a matrix here just because env can't be used in job names
+    # https://docs.github.com/en/actions/learn-github-actions/contexts#context-availability
+    name: ubuntu / check-examples
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Install stable
+        uses: dtolnay/rust-toolchain@stable
+      - name: Download Cargo.lock files
+        if: ${{ inputs.download-lockfiles }}
+        uses: actions/download-artifact@v4
+        with:
+          name: updated-lock-files
+      - name: cargo clippy
+        working-directory: embassy-neorv32/examples
+        run: |
+          cargo clippy --locked
+          cargo clippy --no-default-features --features=dual-hart,fpga --bin dual-hart --locked
