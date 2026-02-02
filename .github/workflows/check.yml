@@ -55,9 +55,9 @@ jobs:
         uses: dtolnay/rust-toolchain@nightly
       - name: cargo doc
         run: |
-          cargo doc -p embassy-neorv32 -F single-hart
-          cargo doc -p embassy-neorv32 -F dual-hart
-          cargo doc -p neorv32-pac -F v-trap
+          cargo doc -p embassy-neorv32 -F single-hart --no-deps
+          cargo doc -p embassy-neorv32 -F dual-hart --no-deps
+          cargo doc -p neorv32-pac -F v-trap --no-deps
         env:
           RUSTDOCFLAGS: --cfg docsrs
 
@@ -114,5 +114,5 @@ jobs:
       - name: cargo clippy
         working-directory: embassy-neorv32/examples
         run: |
-          cargo clippy
-          cargo clippy --no-default-features --features=dual-hart,fpga --bin dual-hart
+          cargo clippy --target riscv32imc-unknown-none-elf
+          cargo clippy --target riscv32imc-unknown-none-elf --no-default-features --features=dual-hart,fpga --bin dual-hart
