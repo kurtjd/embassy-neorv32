@@ -10,7 +10,7 @@ impl RegisterBlock {
     pub const fn ctrl(&self) -> &Ctrl {
         &self.ctrl
     }
-    #[doc = "0x04 - RX/TX data register (lowest 8 bit)"]
+    #[doc = "0x04 - RX/TX data register"]
     #[inline(always)]
     pub const fn data(&self) -> &Data {
         &self.data
@@ -21,8 +21,8 @@ impl RegisterBlock {
 pub type Ctrl = crate::Reg<ctrl::CtrlSpec>;
 #[doc = "Control register"]
 pub mod ctrl;
-#[doc = "DATA (rw) register accessor: RX/TX data register (lowest 8 bit)\n\nYou can [`read`](crate::Reg::read) this register and get [`data::R`]. You can [`reset`](crate::Reg::reset), [`write`](crate::Reg::write), [`write_with_zero`](crate::Reg::write_with_zero) this register using [`data::W`]. You can also [`modify`](crate::Reg::modify) this register. See [API](https://docs.rs/svd2rust/#read--modify--write-api).\n\n<div class=\"warning\">The register is <b>modified</b> in some way after a read operation.</div>\n\nFor information about available fields see [`mod@data`] module"]
+#[doc = "DATA (rw) register accessor: RX/TX data register\n\nYou can [`read`](crate::Reg::read) this register and get [`data::R`]. You can [`reset`](crate::Reg::reset), [`write`](crate::Reg::write), [`write_with_zero`](crate::Reg::write_with_zero) this register using [`data::W`]. You can also [`modify`](crate::Reg::modify) this register. See [API](https://docs.rs/svd2rust/#read--modify--write-api).\n\n<div class=\"warning\">The register is <b>modified</b> in some way after a read operation.</div>\n\nFor information about available fields see [`mod@data`] module"]
 #[doc(alias = "DATA")]
 pub type Data = crate::Reg<data::DataSpec>;
-#[doc = "RX/TX data register (lowest 8 bit)"]
+#[doc = "RX/TX data register"]
 pub mod data;

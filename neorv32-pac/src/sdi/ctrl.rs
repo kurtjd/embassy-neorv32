@@ -6,12 +6,8 @@ pub type W = crate::W<CtrlSpec>;
 pub type SdiCtrlEnR = crate::BitReader;
 #[doc = "Field `SDI_CTRL_EN` writer - SDI enable"]
 pub type SdiCtrlEnW<'a, REG> = crate::BitWriter<'a, REG>;
-#[doc = "Field `SDI_CTRL_CLR_RX` reader - Clear RX FIFO, flag auto-clears"]
-pub type SdiCtrlClrRxR = crate::BitReader;
 #[doc = "Field `SDI_CTRL_CLR_RX` writer - Clear RX FIFO, flag auto-clears"]
 pub type SdiCtrlClrRxW<'a, REG> = crate::BitWriter<'a, REG>;
-#[doc = "Field `SDI_CTRL_CLR_TX` reader - Clear TX FIFO, flag auto-clears"]
-pub type SdiCtrlClrTxR = crate::BitReader;
 #[doc = "Field `SDI_CTRL_CLR_TX` writer - Clear TX FIFO, flag auto-clears"]
 pub type SdiCtrlClrTxW<'a, REG> = crate::BitWriter<'a, REG>;
 #[doc = "Field `SDI_CTRL_FIFO` reader - log2(FIFO size)"]
@@ -45,16 +41,6 @@ impl R {
     #[inline(always)]
     pub fn sdi_ctrl_en(&self) -> SdiCtrlEnR {
         SdiCtrlEnR::new((self.bits & 1) != 0)
-    }
-    #[doc = "Bit 1 - Clear RX FIFO, flag auto-clears"]
-    #[inline(always)]
-    pub fn sdi_ctrl_clr_rx(&self) -> SdiCtrlClrRxR {
-        SdiCtrlClrRxR::new(((self.bits >> 1) & 1) != 0)
-    }
-    #[doc = "Bit 2 - Clear TX FIFO, flag auto-clears"]
-    #[inline(always)]
-    pub fn sdi_ctrl_clr_tx(&self) -> SdiCtrlClrTxR {
-        SdiCtrlClrTxR::new(((self.bits >> 2) & 1) != 0)
     }
     #[doc = "Bits 4:7 - log2(FIFO size)"]
     #[inline(always)]
@@ -91,10 +77,10 @@ impl R {
     pub fn sdi_ctrl_tx_empty(&self) -> SdiCtrlTxEmptyR {
         SdiCtrlTxEmptyR::new(((self.bits >> 26) & 1) != 0)
     }
-    #[doc = "Bit 28 - TX FIFO full"]
+    #[doc = "Bit 27 - TX FIFO full"]
     #[inline(always)]
     pub fn sdi_ctrl_tx_full(&self) -> SdiCtrlTxFullR {
-        SdiCtrlTxFullR::new(((self.bits >> 28) & 1) != 0)
+        SdiCtrlTxFullR::new(((self.bits >> 27) & 1) != 0)
     }
     #[doc = "Bit 31 - Chip-select line is active when set"]
     #[inline(always)]
