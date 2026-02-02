@@ -66,7 +66,7 @@ async fn main(_spawner: embassy_executor::Spawner) {
     let p = embassy_neorv32::init();
 
     // Setup async UART (TX only) with DMA (since the logo has a lot of data to transfer)
-    let mut uart = UartTx::new_async_with_dma(p.UART0, UART_BAUD, UART_IS_SIM, false, p.DMA, Irqs)
+    let mut uart = UartTx::new_async_with_dma(p.UART0, UART_BAUD, false, p.DMA, Irqs)
         .expect("UART and DMA must be supported");
 
     uart.write(&LOGO).await.unwrap();

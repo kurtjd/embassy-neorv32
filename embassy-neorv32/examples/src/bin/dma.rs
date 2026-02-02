@@ -14,8 +14,7 @@ bind_interrupts!(struct Irqs {
 async fn main(_spawner: embassy_executor::Spawner) {
     let p = embassy_neorv32::init();
 
-    let mut uart = UartTx::new_blocking(p.UART0, UART_BAUD, UART_IS_SIM, false)
-        .expect("UART must be supported");
+    let mut uart = UartTx::new_blocking(p.UART0, UART_BAUD, false).expect("UART must be supported");
 
     // Note: DMA is single-channel only, so only one driver can own it.
     // Typically you would instantiate the DMA driver instance directly like this

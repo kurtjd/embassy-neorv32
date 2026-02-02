@@ -19,8 +19,8 @@ async fn main(_spawner: embassy_executor::Spawner) {
     let p = embassy_neorv32::init();
 
     // Setup UART for display purposes
-    let mut uart = UartTx::new_async(p.UART0, UART_BAUD, UART_IS_SIM, false, Irqs)
-        .expect("UART must be supported");
+    let mut uart =
+        UartTx::new_async(p.UART0, UART_BAUD, false, Irqs).expect("UART must be supported");
 
     // Setup async TRNG
     let mut trng = Trng::new_async(p.TRNG, Irqs).expect("TRNG must be supported");

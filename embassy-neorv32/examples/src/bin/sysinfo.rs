@@ -11,8 +11,7 @@ use embassy_neorv32_examples::*;
 async fn main(_spawner: embassy_executor::Spawner) {
     let p = embassy_neorv32::init();
 
-    let mut uart = UartTx::new_blocking(p.UART0, UART_BAUD, UART_IS_SIM, false)
-        .expect("UART must be supported");
+    let mut uart = UartTx::new_blocking(p.UART0, UART_BAUD, false).expect("UART must be supported");
 
     // Print clock frequency
     writeln!(

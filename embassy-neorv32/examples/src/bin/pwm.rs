@@ -13,8 +13,7 @@ use embassy_time::Timer;
 async fn main(_spawner: embassy_executor::Spawner) {
     let p = embassy_neorv32::init();
 
-    let mut uart = UartTx::new_blocking(p.UART0, UART_BAUD, UART_IS_SIM, false)
-        .expect("UART must be supported");
+    let mut uart = UartTx::new_blocking(p.UART0, UART_BAUD, false).expect("UART must be supported");
 
     // Setup PWM peripheral with a clock prescaler of 4096
     let pwm = Pwm::new(p.PWM, pwm::ClkPrsc::_4096).expect("PWM must be supported");

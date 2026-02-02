@@ -17,8 +17,8 @@ async fn main(_spawner: embassy_executor::Spawner) {
     let p = embassy_neorv32::init();
 
     // Setup async UART with no DMA (since we aren't expecting large amounts of data)
-    let mut uart = Uart::new_async(p.UART0, UART_BAUD, UART_IS_SIM, false, Irqs)
-        .expect("UART must be supported");
+    let mut uart =
+        Uart::new_async(p.UART0, UART_BAUD, false, Irqs).expect("UART must be supported");
 
     let description = b"\
     Before you appear the Doors of Durin, providing passage into Moria.\n\

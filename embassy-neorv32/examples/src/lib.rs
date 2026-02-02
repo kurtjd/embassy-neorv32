@@ -15,12 +15,6 @@ compile_error!("At least one of `single-hart` or `dual-hart` features must be en
 /// Baud rate UART host expects.
 pub const UART_BAUD: u32 = 19200;
 
-/// Represents if the UART peripheral should enter simulation mode.
-#[cfg(feature = "sim")]
-pub const UART_IS_SIM: bool = true;
-#[cfg(feature = "fpga")]
-pub const UART_IS_SIM: bool = false;
-
 /// Time is much slower in simulation so this is just a rough scaling to try and get simulation
 /// to match our perception.
 ///
@@ -51,9 +45,7 @@ fn panic_handler(info: &core::panic::PanicInfo) -> ! {
     // SAFETY: Don't have a choice if we want to display the panic message,
     // but worst that can happen is the UART output gets corrupted
     let p = unsafe { embassy_neorv32::Peripherals::steal() };
-    if let Ok(mut uart) =
-        embassy_neorv32::uart::UartTx::new_blocking(p.UART0, UART_BAUD, UART_IS_SIM, false)
-    {
+    if let Ok(mut uart) = embassy_neorv32::uart::UartTx::new_blocking(p.UART0, UART_BAUD, false) {
         writeln!(
             &mut uart,
             "\n\nHART {} PANIC: {} at {}",

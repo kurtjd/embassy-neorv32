@@ -17,8 +17,7 @@ bind_interrupts!(struct Irqs {
 async fn main(_spawner: embassy_executor::Spawner) {
     let p = embassy_neorv32::init();
 
-    let mut uart = UartTx::new_blocking(p.UART0, UART_BAUD, UART_IS_SIM, false)
-        .expect("UART must be supported");
+    let mut uart = UartTx::new_blocking(p.UART0, UART_BAUD, false).expect("UART must be supported");
 
     let gpio = Gpio::new_async(p.GPIO, Irqs).expect("GPIO must be supported");
     let mut input = gpio.new_input(p.PORT0);

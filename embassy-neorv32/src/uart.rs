@@ -2,6 +2,7 @@
 use crate::dma::{self, Dma};
 use crate::interrupt::typelevel::{Binding, Handler, Interrupt};
 use crate::peripherals::{UART0, UART1};
+use crate::sysinfo::SysInfo;
 use core::future::poll_fn;
 use core::marker::PhantomData;
 use core::sync::atomic::{AtomicBool, Ordering};
@@ -100,6 +101,56 @@ impl core::fmt::Display for Error {
 
 impl core::error::Error for Error {}
 
+fn init<T: Instance>(baud_rate: u32, flow_control: bool) {
+    // Enable simulation mode if applicable
+    if SysInfo::soc_config().is_simulation() {
+        T::info()
+            .reg
+            .ctrl()
+            .modify(|_, w| w.uart_ctrl_sim_mode().set_bit());
+    }
+
+    // Enable flow control if applicable
+    if flow_control {
+        T::info()
+            .reg
+            .ctrl()
+            .modify(|_, w| w.uart_ctrl_hwfc_en().set_bit());
+    }
+
+    // baud div is max 10-bits wide
+    const U10_MAX: u16 = 0x3ff;
+    let cpu_freq = SysInfo::clock_freq();
+    let mut baud_div = cpu_freq / (2 * baud_rate);
+    let mut prsc_sel = 0;
+
+    // Calculate clock prescaler and baud rate prescaler
+    // See: https://github.com/stnolting/neorv32/blob/main/sw/lib/source/neorv32_uart.c#L47
+    while baud_div >= U10_MAX as u32 {
+        if prsc_sel == 2 || prsc_sel == 4 {
+            baud_div >>= 3;
+        } else {
+            baud_div >>= 1;
+        }
+        prsc_sel += 1;
+    }
+
+    // Set the clock and baudrate prescalers
+    // SAFETY: The calculation above ensures we are writing valid prscv and baud div
+    T::info().reg.ctrl().modify(|_, w| unsafe {
+        w.uart_ctrl_prsc()
+            .bits(prsc_sel)
+            .uart_ctrl_baud()
+            .bits((baud_div as u16 - 1) & U10_MAX)
+    });
+
+    // Enable UART
+    T::info()
+        .reg
+        .ctrl()
+        .modify(|_, w| w.uart_ctrl_en().set_bit());
+}
+
 /// UART driver.
 pub struct Uart<'d, M: IoMode> {
     rx: UartRx<'d, M>,
@@ -107,56 +158,6 @@ pub struct Uart<'d, M: IoMode> {
 }
 
 impl<'d, M: IoMode> Uart<'d, M> {
-    fn init<T: Instance>(_instance: Peri<'d, T>, baud_rate: u32, sim: bool, flow_control: bool) {
-        // Enable simulation mode if applicable
-        if sim {
-            T::info()
-                .reg
-                .ctrl()
-                .modify(|_, w| w.uart_ctrl_sim_mode().set_bit());
-        }
-
-        // Enable flow control if applicable
-        if flow_control {
-            T::info()
-                .reg
-                .ctrl()
-                .modify(|_, w| w.uart_ctrl_hwfc_en().set_bit());
-        }
-
-        // baud div is max 10-bits wide
-        const U10_MAX: u16 = 0x3ff;
-        let cpu_freq = crate::sysinfo::SysInfo::clock_freq();
-        let mut baud_div = cpu_freq / (2 * baud_rate);
-        let mut prsc_sel = 0;
-
-        // Calculate clock prescaler and baud rate prescaler
-        // See: https://github.com/stnolting/neorv32/blob/main/sw/lib/source/neorv32_uart.c#L47
-        while baud_div >= U10_MAX as u32 {
-            if prsc_sel == 2 || prsc_sel == 4 {
-                baud_div >>= 3;
-            } else {
-                baud_div >>= 1;
-            }
-            prsc_sel += 1;
-        }
-
-        // Set the clock and baudrate prescalers
-        // SAFETY: The calculation above ensures we are writing valid prscv and baud div
-        T::info().reg.ctrl().modify(|_, w| unsafe {
-            w.uart_ctrl_prsc()
-                .bits(prsc_sel)
-                .uart_ctrl_baud()
-                .bits((baud_div as u16 - 1) & U10_MAX)
-        });
-
-        // Enable UART
-        T::info()
-            .reg
-            .ctrl()
-            .modify(|_, w| w.uart_ctrl_en().set_bit());
-    }
-
     fn new_inner<T: Instance>(
         rx_dma: Option<Dma<'d>>,
         tx_dma: Option<Dma<'d>>,
@@ -164,30 +165,6 @@ impl<'d, M: IoMode> Uart<'d, M> {
         let rx = UartRx::new_inner::<T>(rx_dma)?;
         let tx = UartTx::new_inner::<T>(tx_dma)?;
         Ok(Self { rx, tx })
-    }
-
-    fn blocking_flush(&mut self) {
-        self.tx.blocking_flush();
-    }
-
-    /// Reads a byte from RX FIFO, blocking if empty.
-    pub fn blocking_read_byte(&self) -> u8 {
-        self.rx.blocking_read_byte()
-    }
-
-    /// Reads bytes from RX FIFO until buffer is full, blocking if empty.
-    pub fn blocking_read(&self, buf: &mut [u8]) {
-        self.rx.blocking_read(buf);
-    }
-
-    /// Writes a byte to TX FIFO, blocking if full.
-    pub fn blocking_write_byte(&mut self, byte: u8) {
-        self.tx.blocking_write_byte(byte);
-    }
-
-    /// Writes bytes to TX FIFO, blocking if full.
-    pub fn blocking_write(&mut self, bytes: &[u8]) {
-        self.tx.blocking_write(bytes);
     }
 
     /// Splits the UART driver into separate [`UartRx`] and [`UartTx`] drivers.
@@ -203,12 +180,25 @@ impl<'d, M: IoMode> Uart<'d, M> {
     pub fn split_ref(&mut self) -> (&mut UartRx<'d, M>, &mut UartTx<'d, M>) {
         (&mut self.rx, &mut self.tx)
     }
+
+    /// Reads bytes from RX FIFO until buffer is full, blocking if empty.
+    pub fn blocking_read(&self, buf: &mut [u8]) {
+        self.rx.blocking_read(buf);
+    }
+
+    /// Writes bytes to TX FIFO, blocking if full.
+    pub fn blocking_write(&mut self, buf: &[u8]) {
+        self.tx.blocking_write(buf);
+    }
+
+    /// Blocks until the TX FIFO is empty and has finished transmitting.
+    pub fn blocking_flush(&mut self) {
+        self.tx.blocking_flush();
+    }
 }
 
 impl<'d> Uart<'d, Blocking> {
     /// Creates a new blocking UART driver with given baud rate.
-    ///
-    /// Enables simulation mode if `sim` is true and hardware flow control if `flow_control` is true.
     ///
     /// # Errors
     ///
@@ -216,37 +206,28 @@ impl<'d> Uart<'d, Blocking> {
     pub fn new_blocking<T: Instance>(
         _instance: Peri<'d, T>,
         baud_rate: u32,
-        sim: bool,
         flow_control: bool,
     ) -> Result<Self, Error> {
-        Self::init(_instance, baud_rate, sim, flow_control);
+        init::<T>(baud_rate, flow_control);
         Self::new_inner::<T>(None, None)
     }
 }
 
 impl<'d> Uart<'d, Async> {
     fn new_async_inner<T: Instance>(
-        _instance: Peri<'d, T>,
         baud_rate: u32,
-        sim: bool,
         flow_control: bool,
         rx_dma: Option<Dma<'d>>,
         tx_dma: Option<Dma<'d>>,
     ) -> Result<Self, Error> {
         let uart = Self::new_inner::<T>(rx_dma, tx_dma)?;
-        Self::init(_instance, baud_rate, sim, flow_control);
+        init::<T>(baud_rate, flow_control);
         // SAFETY: It is valid to enable UART interrupt here
         unsafe { T::Interrupt::enable() }
         Ok(uart)
     }
 
-    fn flush(&mut self) -> impl Future<Output = ()> {
-        self.tx.flush()
-    }
-
     /// Creates a new async UART driver with given baud rate.
-    ///
-    /// Enables simulation mode if `sim` is true and hardware flow control if `flow_control` is true.
     ///
     /// # Errors
     ///
@@ -254,16 +235,13 @@ impl<'d> Uart<'d, Async> {
     pub fn new_async<T: Instance>(
         _instance: Peri<'d, T>,
         baud_rate: u32,
-        sim: bool,
         flow_control: bool,
         _irq: impl Binding<T::Interrupt, InterruptHandler<T>> + 'd,
     ) -> Result<Self, Error> {
-        Self::new_async_inner(_instance, baud_rate, sim, flow_control, None, None)
+        Self::new_async_inner::<T>(baud_rate, flow_control, None, None)
     }
 
     /// Creates a new async UART driver with given baud rate.
-    ///
-    /// Enables simulation mode if `sim` is true and hardware flow control if `flow_control` is true.
     ///
     /// Additionally provides the DMA peripheral for TX transfers.
     /// See [`UartTx::new_async_with_dma`] for considerations on whether to use DMA or not.
@@ -276,7 +254,6 @@ impl<'d> Uart<'d, Async> {
     pub fn new_async_with_tx_dma<T: Instance, D: dma::Instance>(
         _instance: Peri<'d, T>,
         baud_rate: u32,
-        sim: bool,
         flow_control: bool,
         dma: Peri<'d, D>,
         _irq: impl Binding<T::Interrupt, InterruptHandler<T>>
@@ -284,12 +261,10 @@ impl<'d> Uart<'d, Async> {
         + 'd,
     ) -> Result<Self, Error> {
         let dma = dma::Dma::new(dma, _irq).map_err(Error::Dma)?;
-        Self::new_async_inner(_instance, baud_rate, sim, flow_control, None, Some(dma))
+        Self::new_async_inner::<T>(baud_rate, flow_control, None, Some(dma))
     }
 
     /// Creates a new async UART driver with given baud rate.
-    ///
-    /// Enables simulation mode if `sim` is true and hardware flow control if `flow_control` is true.
     ///
     /// Additionally provides the DMA peripheral for RX transfers.
     /// See [`UartRx::new_async_with_dma`] for considerations on whether to use DMA or not.
@@ -302,7 +277,6 @@ impl<'d> Uart<'d, Async> {
     pub fn new_async_with_rx_dma<T: Instance, D: dma::Instance>(
         _instance: Peri<'d, T>,
         baud_rate: u32,
-        sim: bool,
         flow_control: bool,
         dma: Peri<'d, D>,
         _irq: impl Binding<T::Interrupt, InterruptHandler<T>>
@@ -310,7 +284,7 @@ impl<'d> Uart<'d, Async> {
         + 'd,
     ) -> Result<Self, Error> {
         let dma = dma::Dma::new(dma, _irq).map_err(Error::Dma)?;
-        Self::new_async_inner(_instance, baud_rate, sim, flow_control, Some(dma), None)
+        Self::new_async_inner::<T>(baud_rate, flow_control, Some(dma), None)
     }
 
     /// Reads bytes from RX FIFO until buffer is full.
@@ -327,8 +301,13 @@ impl<'d> Uart<'d, Async> {
     /// # Errors
     ///
     /// Returns [`Error::Dma`] if DMA error occurred during transfer.
-    pub fn write(&mut self, bytes: &[u8]) -> impl Future<Output = Result<(), Error>> {
-        self.tx.write(bytes)
+    pub fn write(&mut self, buf: &[u8]) -> impl Future<Output = Result<(), Error>> {
+        self.tx.write(buf)
+    }
+
+    /// Waits until the TX FIFO is empty and has finished transmitting.
+    pub fn flush(&mut self) -> impl Future<Output = ()> {
+        self.tx.flush()
     }
 }
 
@@ -356,11 +335,8 @@ impl<'d, M: IoMode> UartRx<'d, M> {
         T::info().active.rx.store(true, Ordering::Release);
 
         // FIFO depth is part of DATA register, which has side effects when read, so we do it once and cache it
-        // FIFO depth is bits 11:8 of DATA
-        // Revisit: The SVD does not define FIFO depths as separate fields. Upstream patch?
         // This is used to chunk up DMA transfers into sizes that will fit in the FIFO
-        let fifo_depth = (T::info().reg.data().read().bits() >> 8) & (0b1111);
-        let fifo_depth = 1 << fifo_depth;
+        let fifo_depth = 1 << T::info().reg.data().read().uart_data_rx_fifo().bits();
 
         Ok(Self {
             info: T::info(),
@@ -370,8 +346,8 @@ impl<'d, M: IoMode> UartRx<'d, M> {
         })
     }
 
-    fn read_inner(&self) -> u8 {
-        self.info.reg.data().read().bits() as u8
+    fn read_byte(&self) -> u8 {
+        self.info.reg.data().read().uart_data_rtx().bits()
     }
 
     fn enable_irq_rx_nempty(&mut self) {
@@ -404,7 +380,7 @@ impl<'d, M: IoMode> UartRx<'d, M> {
     /// Reads a byte from RX FIFO, blocking if empty.
     pub fn blocking_read_byte(&self) -> u8 {
         while self.fifo_empty() {}
-        self.read_inner()
+        self.read_byte()
     }
 
     /// Reads bytes from RX FIFO until buffer is full, blocking if empty.
@@ -429,7 +405,7 @@ impl<'d> UartRx<'d, Blocking> {
         flow_control: bool,
     ) -> Result<Self, Error> {
         let uart = Self::new_inner::<T>(None)?;
-        Uart::<Blocking>::init(_instance, baud_rate, false, flow_control);
+        init::<T>(baud_rate, flow_control);
         Ok(uart)
     }
 }
@@ -474,7 +450,7 @@ impl<'d> UartRx<'d, Async> {
         // Otherwise, manually read each byte from RX FIFO
         } else {
             for byte in chunk {
-                *byte = self.read_inner();
+                *byte = self.read_byte();
             }
         }
 
@@ -482,13 +458,12 @@ impl<'d> UartRx<'d, Async> {
     }
 
     fn new_async_inner<T: Instance>(
-        _instance: Peri<'d, T>,
         baud_rate: u32,
         flow_control: bool,
         dma: Option<Dma<'d>>,
     ) -> Result<Self, Error> {
         let uart = Self::new_inner::<T>(dma)?;
-        Uart::<Async>::init(_instance, baud_rate, false, flow_control);
+        init::<T>(baud_rate, flow_control);
         // SAFETY: It is valid to enable UART interrupt here
         unsafe { T::Interrupt::enable() }
         Ok(uart)
@@ -507,7 +482,7 @@ impl<'d> UartRx<'d, Async> {
         flow_control: bool,
         _irq: impl Binding<T::Interrupt, InterruptHandler<T>> + 'd,
     ) -> Result<Self, Error> {
-        Self::new_async_inner(_instance, baud_rate, flow_control, None)
+        Self::new_async_inner::<T>(baud_rate, flow_control, None)
     }
 
     /// Creates a new RX-only async UART driver with given baud rate.
@@ -537,7 +512,7 @@ impl<'d> UartRx<'d, Async> {
         + 'd,
     ) -> Result<Self, Error> {
         let dma = dma::Dma::new(dma, _irq).map_err(Error::Dma)?;
-        Self::new_async_inner(_instance, baud_rate, flow_control, Some(dma))
+        Self::new_async_inner::<T>(baud_rate, flow_control, Some(dma))
     }
 
     /// Reads bytes from RX FIFO until buffer is full.
@@ -559,7 +534,7 @@ impl<'d> UartRx<'d, Async> {
         // and manually read a single byte
         for byte in chunks.into_remainder() {
             self.wait_fifo_nempty().await;
-            *byte = self.read_inner();
+            *byte = self.read_byte();
         }
 
         Ok(())
@@ -597,11 +572,8 @@ impl<'d, M: IoMode> UartTx<'d, M> {
         T::info().active.rx.store(true, Ordering::Release);
 
         // FIFO depth is part of DATA register, which has side effects when read, so we do it once and cache it
-        // FIFO depth is bits 15:12 of DATA
-        // Revisit: The SVD does not define FIFO depths as separate fields. Upstream patch?
         // This is used to chunk up DMA transfers into sizes that will fit in the FIFO
-        let fifo_depth = (T::info().reg.data().read().bits() >> 12) & (0b1111);
-        let fifo_depth = 1 << fifo_depth;
+        let fifo_depth = 1 << T::info().reg.data().read().uart_data_tx_fifo().bits();
 
         Ok(Self {
             info: T::info(),
@@ -611,12 +583,12 @@ impl<'d, M: IoMode> UartTx<'d, M> {
         })
     }
 
-    fn write_inner(&mut self, byte: u8) {
-        // SAFETY: We are just writing a byte, the MSB bits are read-only
+    fn write_byte(&mut self, byte: u8) {
+        // SAFETY: All u8 values are valid
         self.info
             .reg
             .data()
-            .write(|w| unsafe { w.bits(byte as u32) });
+            .modify(|_, w| unsafe { w.uart_data_rtx().bits(byte) });
     }
 
     fn enable_irq_tx_empty(&mut self) {
@@ -635,35 +607,35 @@ impl<'d, M: IoMode> UartTx<'d, M> {
             .bit_is_clear()
     }
 
+    fn fifo_empty(&self) -> bool {
+        self.info
+            .reg
+            .ctrl()
+            .read()
+            .uart_ctrl_tx_empty()
+            .bit_is_set()
+    }
+
     fn busy(&self) -> bool {
         self.info.reg.ctrl().read().uart_ctrl_tx_busy().bit_is_set()
     }
 
-    fn blocking_flush(&mut self) {
-        while self.busy() {}
-    }
-
-    /// Writes a byte to TX FIFO, blocking if full.
-    pub fn blocking_write_byte(&mut self, byte: u8) {
-        while self.fifo_full() {}
-        self.write_inner(byte);
-        self.blocking_flush();
-    }
-
     /// Writes bytes to TX FIFO, blocking if full.
-    pub fn blocking_write(&mut self, bytes: &[u8]) {
-        for byte in bytes {
+    pub fn blocking_write(&mut self, buf: &[u8]) {
+        for byte in buf {
             while self.fifo_full() {}
-            self.write_inner(*byte);
+            self.write_byte(*byte);
         }
-        self.blocking_flush();
+    }
+
+    /// Blocks until the TX FIFO is empty and has finished transmitting.
+    pub fn blocking_flush(&mut self) {
+        while self.busy() {}
     }
 }
 
 impl<'d> UartTx<'d, Blocking> {
     /// Creates a new TX-only blocking UART driver with given baud rate.
-    ///
-    /// Enables simulation mode if `sim` is true and hardware flow control if `flow_control` is true.
     ///
     /// # Errors
     ///
@@ -671,16 +643,29 @@ impl<'d> UartTx<'d, Blocking> {
     pub fn new_blocking<T: Instance>(
         _instance: Peri<'d, T>,
         baud_rate: u32,
-        sim: bool,
         flow_control: bool,
     ) -> Result<Self, Error> {
         let uart = Self::new_inner::<T>(None)?;
-        Uart::<Blocking>::init(_instance, baud_rate, sim, flow_control);
+        init::<T>(baud_rate, flow_control);
         Ok(uart)
     }
 }
 
 impl<'d> UartTx<'d, Async> {
+    async fn wait_fifo_empty(&mut self) {
+        poll_fn(|cx| {
+            self.info.tx_waker.register(cx.waker());
+            if self.fifo_empty() {
+                Poll::Ready(())
+            } else {
+                // CS used here since interrupt modifies register
+                critical_section::with(|_| self.enable_irq_tx_empty());
+                Poll::Pending
+            }
+        })
+        .await
+    }
+
     async fn write_chunk(&mut self, chunk: &[u8]) -> Result<(), Error> {
         // If DMA available, use it to transfer data from buffer to TX FIFO
         if let Some(dma) = &mut self.dma {
@@ -692,7 +677,7 @@ impl<'d> UartTx<'d, Async> {
         // Otherwise, manually write each byte to TX FIFO
         } else {
             for byte in chunk.iter().copied() {
-                self.write_inner(byte);
+                self.write_byte(byte);
             }
         }
 
@@ -700,36 +685,18 @@ impl<'d> UartTx<'d, Async> {
     }
 
     fn new_async_inner<T: Instance>(
-        _instance: Peri<'d, T>,
         baud_rate: u32,
-        sim: bool,
         flow_control: bool,
         dma: Option<Dma<'d>>,
     ) -> Result<Self, Error> {
         let uart = Self::new_inner::<T>(dma)?;
-        Uart::<Async>::init(_instance, baud_rate, sim, flow_control);
+        init::<T>(baud_rate, flow_control);
         // SAFETY: It is valid to enable UART interrupt here
         unsafe { T::Interrupt::enable() }
         Ok(uart)
     }
 
-    async fn flush(&mut self) {
-        poll_fn(|cx| {
-            self.info.tx_waker.register(cx.waker());
-            if !self.busy() {
-                Poll::Ready(())
-            } else {
-                // CS used here since interrupt modifies register
-                critical_section::with(|_| self.enable_irq_tx_empty());
-                Poll::Pending
-            }
-        })
-        .await
-    }
-
     /// Creates a new TX-only async UART driver with given baud rate.
-    ///
-    /// Enables simulation mode if `sim` is true and hardware flow control if `flow_control` is true.
     ///
     /// # Errors
     ///
@@ -737,16 +704,13 @@ impl<'d> UartTx<'d, Async> {
     pub fn new_async<T: Instance>(
         _instance: Peri<'d, T>,
         baud_rate: u32,
-        sim: bool,
         flow_control: bool,
         _irq: impl Binding<T::Interrupt, InterruptHandler<T>> + 'd,
     ) -> Result<Self, Error> {
-        Self::new_async_inner(_instance, baud_rate, sim, flow_control, None)
+        Self::new_async_inner::<T>(baud_rate, flow_control, None)
     }
 
     /// Creates a new TX-only async UART driver with given baud rate.
-    ///
-    /// Enables simulation mode if `sim` is true and hardware flow control if `flow_control` is true.
     ///
     /// Additionally provides the DMA peripheral for transfers.
     ///
@@ -764,7 +728,6 @@ impl<'d> UartTx<'d, Async> {
     pub fn new_async_with_dma<T: Instance, D: dma::Instance>(
         _instance: Peri<'d, T>,
         baud_rate: u32,
-        sim: bool,
         flow_control: bool,
         dma: Peri<'d, D>,
         _irq: impl Binding<T::Interrupt, InterruptHandler<T>>
@@ -772,7 +735,7 @@ impl<'d> UartTx<'d, Async> {
         + 'd,
     ) -> Result<Self, Error> {
         let dma = dma::Dma::new(dma, _irq).map_err(Error::Dma)?;
-        Self::new_async_inner(_instance, baud_rate, sim, flow_control, Some(dma))
+        Self::new_async_inner::<T>(baud_rate, flow_control, Some(dma))
     }
 
     /// Writes bytes from buffer to TX FIFO.
@@ -780,18 +743,27 @@ impl<'d> UartTx<'d, Async> {
     /// # Errors
     ///
     /// Returns [`Error::Dma`] if DMA error occurred during transfer.
-    pub async fn write(&mut self, bytes: &[u8]) -> Result<(), Error> {
-        for chunk in bytes.chunks(self.fifo_depth) {
+    pub async fn write(&mut self, buf: &[u8]) -> Result<(), Error> {
+        for chunk in buf.chunks(self.fifo_depth) {
+            self.wait_fifo_empty().await;
             self.write_chunk(chunk).await?;
-            self.flush().await;
         }
 
         Ok(())
+    }
+
+    /// Waits until the TX FIFO is empty and has finished transmitting.
+    pub async fn flush(&mut self) {
+        // We can wait until interrupt for TX empty, but still need to poll for not busy
+        self.wait_fifo_empty().await;
+        self.blocking_flush();
     }
 }
 
 impl<'d, M: IoMode> Drop for UartTx<'d, M> {
     fn drop(&mut self) {
+        // Want to make sure TX is empty before disabling
+        self.blocking_flush();
         self.info.active.tx.store(false, Ordering::Release);
         drop_uart(&self.info);
     }
@@ -823,8 +795,6 @@ impl Active {
 }
 
 struct Info {
-    // Note: uart0 and uart1 can both share uart0::RegisterBlock
-    // PAC is able to coerce uart1::ptr() to it with correct base address
     reg: &'static crate::pac::uart0::RegisterBlock,
     active: &'static Active,
     rx_waker: &'static AtomicWaker,
@@ -876,7 +846,7 @@ macro_rules! impl_instance {
             }
 
             fn supported() -> bool {
-                crate::sysinfo::SysInfo::soc_config().$soc_cfg()
+                SysInfo::soc_config().$soc_cfg()
             }
         }
         impl Instance for $periph {

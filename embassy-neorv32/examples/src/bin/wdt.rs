@@ -12,8 +12,7 @@ async fn main(_spawner: embassy_executor::Spawner) {
     let p = embassy_neorv32::init();
 
     // Setup UART just for printing WDT state
-    let mut uart = UartTx::new_blocking(p.UART0, UART_BAUD, UART_IS_SIM, false)
-        .expect("UART must be supported");
+    let mut uart = UartTx::new_blocking(p.UART0, UART_BAUD, false).expect("UART must be supported");
 
     // Setup WDT with timeout of 1ms and enable it then lock it
     let wdt = Wdt::new(p.WDT).expect("WDT must be supported");
