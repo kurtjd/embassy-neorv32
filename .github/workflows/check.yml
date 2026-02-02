@@ -55,9 +55,9 @@ jobs:
         uses: dtolnay/rust-toolchain@nightly
       - name: cargo doc
         run: |
-          cargo doc -p embassy-neorv32 -F single-hart --locked
-          cargo doc -p embassy-neorv32 -F dual-hart --locked
-          cargo doc -p neorv32-pac -F v-trap --locked
+          cargo doc -p embassy-neorv32 -F single-hart
+          cargo doc -p embassy-neorv32 -F dual-hart
+          cargo doc -p neorv32-pac -F v-trap
         env:
           RUSTDOCFLAGS: --cfg docsrs
 
@@ -91,9 +91,9 @@ jobs:
       # intentionally no target specifier; see https://github.com/jonhoo/rust-ci-conf/pull/4
       # --feature-powerset runs for every combination of features
       - name: cargo hack
-        run:
-          cargo hack -p embassy-neorv32 --feature-powerset --mutually-exclusive-features=single-hart,dual-hart clippy --locked
-          cargo hack -p neorv32-pac --feature-powerset clippy --locked
+        run: |
+          cargo hack -p embassy-neorv32 --feature-powerset --mutually-exclusive-features=single-hart,dual-hart clippy
+          cargo hack -p neorv32-pac --feature-powerset clippy
 
   check-examples:
     runs-on: ubuntu-latest
@@ -114,5 +114,5 @@ jobs:
       - name: cargo clippy
         working-directory: embassy-neorv32/examples
         run: |
-          cargo clippy --locked
-          cargo clippy --no-default-features --features=dual-hart,fpga --bin dual-hart --locked
+          cargo clippy
+          cargo clippy --no-default-features --features=dual-hart,fpga --bin dual-hart
