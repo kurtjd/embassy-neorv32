@@ -33,8 +33,7 @@ To run these examples, follow these steps:
 - Install [cargo-binutils](https://crates.io/crates/cargo-binutils)
 - Modify build target in `examples/.cargo/config.toml` to match your configuration
 - Modify `examples/memory.x` to match the size of your configured `DMEM` and `IMEM`
-- Modify `examples/Cargo.toml` features `sim` and `fpga` such that
-the `tick-hz` feature for `embassy-time` matches your configuration
+- Modify `examples/Cargo.toml` features `sim` and `fpga` such that the `tick-hz` feature for `embassy-time` matches your configuration
 - Modify `UART_BAUD` in `examples/src/lib.rs` to match your host UART
 - Clone [neorv32 v1.12.6](https://github.com/stnolting/neorv32/tree/v1.12.6)
 - Continue with one of the series of steps below depending on if running in simulation or on FPGA

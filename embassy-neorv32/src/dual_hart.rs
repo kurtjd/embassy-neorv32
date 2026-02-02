@@ -113,7 +113,7 @@ where
     // We don't want to call Drop ourselves since we are transferring ownership to hart 1
     let mut entry = ManuallyDrop::new(entry);
     let entry = &raw mut entry as u64;
-    let setup = hart1_setup::<F> as usize as u64;
+    let setup = hart1_setup::<F> as *const () as usize as u64;
 
     // Pack both setup and entry into u64 mtimecmp where hart 1 can easily see it
     let packed = (setup << 32) | entry;

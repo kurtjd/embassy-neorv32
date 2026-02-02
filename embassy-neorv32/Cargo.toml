@@ -1,6 +1,6 @@
 [package]
 name = "embassy-neorv32"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 description = "Embassy Hardware Abstraction Layer (HAL) for the open-source NEORV32 RISC-V microcontroller"
 authors = ["Kurtis Dinelle <kurtis.dinelle@gmail.com>"]
@@ -16,16 +16,16 @@ v-trap = ["rt", "neorv32-pac/v-trap"]
 
 # TEMPORARY: Use our own CS until neorv32 csrcci fix is released
 #single-hart = ["riscv/critical-section-single-hart"]
-single-hart = ["critical-section/restore-state-bool"]
+single-hart = ["rt", "critical-section/restore-state-bool"]
 
-dual-hart = ["critical-section/restore-state-u8"]
+dual-hart = ["rt", "critical-section/restore-state-u8"]
 
 # Note: CLINT MTIMER always runs at CPU freq, thus this needs to match CPU FREQ
 # But CPU freq is configurable, so defer tick rate choice to binary
 time-driver = ["dep:embassy-time-driver", "dep:embassy-time-queue-utils", "rt"]
 
 [dependencies]
-neorv32-pac = { version = "0.1.0", path = "../neorv32-pac", features = [
+neorv32-pac = { version = "0.2.0", path = "../neorv32-pac", features = [
     "critical-section",
 ] }
 riscv = { version = "0.16.0" }
