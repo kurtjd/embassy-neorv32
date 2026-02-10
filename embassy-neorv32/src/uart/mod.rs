@@ -1,4 +1,6 @@
 //! Universal Asynchronous Receiver and Transmitter (UART)
+pub mod buffered;
+
 use crate::dma::{self, Dma};
 use crate::interrupt::typelevel::{Binding, Handler, Interrupt};
 use crate::peripherals::{UART0, UART1};
@@ -7,6 +9,7 @@ use core::future::poll_fn;
 use core::marker::PhantomData;
 use core::sync::atomic::{AtomicBool, Ordering};
 use core::task::Poll;
+use embassy_hal_internal::atomic_ring_buffer::RingBuffer;
 use embassy_hal_internal::{Peri, PeripheralType};
 use embassy_sync::waitqueue::AtomicWaker;
 
@@ -15,68 +18,78 @@ pub struct InterruptHandler<T: Instance> {
     _phantom: PhantomData<T>,
 }
 
+// If RX FIFO is not empty, disable RX not empty IRQ and wake RX task
+fn check_wake_rx_nempty<T: Instance>() {
+    let rx_nempty_irq_set = T::info()
+        .reg
+        .ctrl()
+        .read()
+        .uart_ctrl_irq_rx_nempty()
+        .bit_is_set();
+    let rx_nempty = T::info()
+        .reg
+        .ctrl()
+        .read()
+        .uart_ctrl_rx_nempty()
+        .bit_is_set();
+
+    if rx_nempty_irq_set && rx_nempty {
+        T::info()
+            .reg
+            .ctrl()
+            .modify(|_, w| w.uart_ctrl_irq_rx_nempty().clear_bit());
+        T::info().rx_waker.wake();
+    }
+}
+
+// If RX FIFO is full, disable RX full IRQ and wake RX task
+fn check_wake_rx_full<T: Instance>() {
+    let rx_full_irq_set = T::info()
+        .reg
+        .ctrl()
+        .read()
+        .uart_ctrl_irq_rx_full()
+        .bit_is_set();
+    let rx_full = T::info().reg.ctrl().read().uart_ctrl_rx_full().bit_is_set();
+
+    if rx_full_irq_set && rx_full {
+        T::info()
+            .reg
+            .ctrl()
+            .modify(|_, w| w.uart_ctrl_irq_rx_full().clear_bit());
+        T::info().rx_waker.wake();
+    }
+}
+
+// If TX FIFO is empty, disable TX empty IRQ and wake TX task
+fn check_wake_tx_empty<T: Instance>() {
+    let tx_empty_irq_set = T::info()
+        .reg
+        .ctrl()
+        .read()
+        .uart_ctrl_irq_tx_empty()
+        .bit_is_set();
+    let tx_empty = T::info()
+        .reg
+        .ctrl()
+        .read()
+        .uart_ctrl_tx_empty()
+        .bit_is_set();
+
+    if tx_empty_irq_set && tx_empty {
+        T::info()
+            .reg
+            .ctrl()
+            .modify(|_, w| w.uart_ctrl_irq_tx_empty().clear_bit());
+        T::info().tx_waker.wake();
+    }
+}
+
 impl<T: Instance> Handler<T::Interrupt> for InterruptHandler<T> {
     unsafe fn on_interrupt() {
-        // If RX FIFO is not empty, disable RX not empty IRQ and wake RX task
-        let rx_nempty_irq_set = T::info()
-            .reg
-            .ctrl()
-            .read()
-            .uart_ctrl_irq_rx_nempty()
-            .bit_is_set();
-        let rx_nempty = T::info()
-            .reg
-            .ctrl()
-            .read()
-            .uart_ctrl_rx_nempty()
-            .bit_is_set();
-
-        if rx_nempty_irq_set && rx_nempty {
-            T::info()
-                .reg
-                .ctrl()
-                .modify(|_, w| w.uart_ctrl_irq_rx_nempty().clear_bit());
-            T::info().rx_waker.wake();
-        }
-
-        // If RX FIFO is full, disable RX full IRQ and wake RX task
-        let rx_full_irq_set = T::info()
-            .reg
-            .ctrl()
-            .read()
-            .uart_ctrl_irq_rx_full()
-            .bit_is_set();
-        let rx_full = T::info().reg.ctrl().read().uart_ctrl_rx_full().bit_is_set();
-
-        if rx_full_irq_set && rx_full {
-            T::info()
-                .reg
-                .ctrl()
-                .modify(|_, w| w.uart_ctrl_irq_rx_full().clear_bit());
-            T::info().rx_waker.wake();
-        }
-
-        // If TX FIFO is empty, disable TX empty IRQ and wake TX task
-        let tx_empty_irq_set = T::info()
-            .reg
-            .ctrl()
-            .read()
-            .uart_ctrl_irq_tx_empty()
-            .bit_is_set();
-        let tx_empty = T::info()
-            .reg
-            .ctrl()
-            .read()
-            .uart_ctrl_tx_empty()
-            .bit_is_set();
-
-        if tx_empty_irq_set && tx_empty {
-            T::info()
-                .reg
-                .ctrl()
-                .modify(|_, w| w.uart_ctrl_irq_tx_empty().clear_bit());
-            T::info().tx_waker.wake();
-        }
+        check_wake_rx_nempty::<T>();
+        check_wake_rx_full::<T>();
+        check_wake_tx_empty::<T>();
     }
 }
 
@@ -819,6 +832,7 @@ impl IoMode for Async {}
 
 trait SealedInstance {
     fn info() -> Info;
+    fn buffer() -> &'static RingBuffer;
     fn supported() -> bool;
 }
 
@@ -843,6 +857,11 @@ macro_rules! impl_instance {
                     rx_waker: &RX_WAKER,
                     tx_waker: &TX_WAKER,
                 }
+            }
+
+            fn buffer() -> &'static RingBuffer {
+                static BUFFER: RingBuffer = RingBuffer::new();
+                &BUFFER
             }
 
             fn supported() -> bool {
