@@ -11,11 +11,11 @@ approach to accessing hardware, consider using the [NEORV32 Embassy HAL](../emba
 ## Generation
 This PAC is automatically generated using [svd2rust](https://crates.io/crates/svd2rust) and
 [svdtools](https://crates.io/crates/svdtools). Additionally, [form](https://crates.io/crates/form)
-is used to properly format and structure to generated Rust code.
+is used to properly format and structure the generated Rust code.
 
 To re-generate this PAC, install the above tools and simply run `./genpac.sh` from a terminal
 (though this is only necessary if you modify `neorv32.svd` and/or `config.yml`).
 
 ## Version
-This PAC has been generated for NEORV32 [v1.12.6](https://github.com/stnolting/neorv32/tree/v1.12.6).
+This PAC has been generated for NEORV32 [v1.12.8](https://github.com/stnolting/neorv32/tree/v1.12.8).
 There is no guarantee it will work for different versions.

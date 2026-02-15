@@ -14,9 +14,9 @@ async fn main(_spawner: embassy_executor::Spawner) {
     // Setup UART just for printing WDT state
     let mut uart = UartTx::new_blocking(p.UART0, UART_BAUD, false).expect("UART must be supported");
 
-    // Setup WDT with timeout of 1ms and enable it then lock it
+    // Setup WDT with timeout of 1000 ms and enable it then lock it
     let wdt = Wdt::new(p.WDT).expect("WDT must be supported");
-    wdt.set_timeout_ms(1);
+    wdt.set_timeout_ms(ms_to_us(1000) as u32);
     wdt.enable();
     let wdt = wdt.lock();
 
@@ -27,6 +27,7 @@ async fn main(_spawner: embassy_executor::Spawner) {
     // On first reset, let's see if illegal access triggers a reset
     if matches!(reset_cause, ResetCause::External) {
         uart.blocking_write(b"Forcing HW reset...\n");
+        uart.blocking_flush();
         wdt.force_hw_reset();
     }
 
@@ -34,7 +35,7 @@ async fn main(_spawner: embassy_executor::Spawner) {
     for _ in 0..5 {
         uart.blocking_write(b"Feeding watchdog...\n");
         wdt.feed();
-        Timer::after_micros(ms_to_us(1)).await;
+        Timer::after_micros(ms_to_us(100)).await;
     }
     uart.blocking_write(b"Waiting for watchdog timeout...\n");
 }
