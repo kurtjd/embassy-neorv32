@@ -35,7 +35,8 @@ To run these examples, follow these steps:
 - Modify `examples/memory.x` to match the size of your configured `DMEM` and `IMEM`
 - Modify `examples/Cargo.toml` features `sim` and `fpga` such that the `tick-hz` feature for `embassy-time` matches your configuration
 - Modify `UART_BAUD` in `examples/src/lib.rs` to match your host UART
-- Clone [neorv32 v1.12.6](https://github.com/stnolting/neorv32/tree/v1.12.6)
+- Clone [neorv32 v1.12.8](https://github.com/stnolting/neorv32/tree/v1.12.8)
+- In the cloned neorv32 folder, run `cd sw/image_gen && gcc image_gen.c -o image_gen`
 - Continue with one of the series of steps below depending on if running in simulation or on FPGA
 
 ### Simulation
@@ -59,7 +60,7 @@ To run these examples, follow these steps:
 - For more help, see [bootloader](https://stnolting.github.io/neorv32/#_bootloader)
 
 ## Version
-This HAL targets NEORV32 [v1.12.6](https://github.com/stnolting/neorv32/tree/v1.12.6).
+This HAL targets NEORV32 [v1.12.8](https://github.com/stnolting/neorv32/tree/v1.12.8).
 There is no guarantee it will work for different versions.
 
 ## References

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.2.0] - 2026-02-15
+
 ### Added
 
 - Created a CHANGELOG
+
+### Changed
+
+- Update to NEORV32 v1.12.8

@@ -7,7 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.2.0] - 2026-02-15
+
 ### Added
 
+- Add instructions for building `image_gen` to README
 - Implemented RX-buffered UART
 - Created a CHANGELOG
+
+### Changed
+
+- Change image-gen parameters in example scripts
+- Changed WDT timeout in example
+- Update to NEORV32 v1.12.8
+
+### Removed
+
+- Removed temporary critical section bug workaround

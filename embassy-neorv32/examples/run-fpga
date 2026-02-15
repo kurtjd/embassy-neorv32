@@ -7,7 +7,7 @@ BASE="$HOME/neorv32"
 rust-objcopy $1 -O binary "$1.bin"
 
 # Convert bin to fpga bootloader bin format neorv32 expects
-"$BASE/sw/image_gen/image_gen" -i "$1.bin" -o "$1-fpga" -t app_bin
+"$BASE/sw/image_gen/image_gen" -i "$1.bin" -o "$1-fpga" -t exe
 
 # Make it easier to find binary in picocom by cd'ing to the correct folder it's in
 cd -- "$(dirname -- "$1")"
