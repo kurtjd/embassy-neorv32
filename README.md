@@ -15,7 +15,7 @@ versions unless there is interest (please open an issue if so). Or better yet, o
 PRs for bug fixes, new peripheral drivers, and new version support are highly encouraged and welcomed!
 
 ## Version
-These crates have been developed for NEORV32 [v1.12.6](https://github.com/stnolting/neorv32/tree/v1.12.6).
+These crates have been developed for NEORV32 [v1.12.8](https://github.com/stnolting/neorv32/tree/v1.12.8).
 There is no guarantee they will work for different versions.
 
 ## License
