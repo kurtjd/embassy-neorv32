@@ -565,7 +565,7 @@ impl<'d, M: IoMode> embedded_hal_02::digital::v2::InputPin for Port<'d, M> {
     }
 
     fn is_low(&self) -> Result<bool, Self::Error> {
-        Ok(self.is_high())
+        Ok(self.is_low())
     }
 }
 
@@ -610,7 +610,7 @@ impl<'d, M: IoMode> embedded_hal_02::digital::v2::InputPin for Input<'d, M> {
     }
 
     fn is_low(&self) -> Result<bool, Self::Error> {
-        Ok(self.is_high())
+        Ok(self.is_low())
     }
 }
 
