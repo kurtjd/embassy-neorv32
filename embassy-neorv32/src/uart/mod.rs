@@ -582,7 +582,7 @@ impl<'d, M: IoMode> UartTx<'d, M> {
         }
 
         // Mark TX as active
-        T::info().active.rx.store(true, Ordering::Release);
+        T::info().active.tx.store(true, Ordering::Release);
 
         // FIFO depth is part of DATA register, which has side effects when read, so we do it once and cache it
         // This is used to chunk up DMA transfers into sizes that will fit in the FIFO
