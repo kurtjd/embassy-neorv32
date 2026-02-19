@@ -217,13 +217,13 @@ mod cs {
             let mut mstatus;
             // SAFETY: This asm has the effect of disabling interrupts which is desired,
             // and it returns a value that is the correct bit representation of `Mstatus`
-            unsafe {
+            let mie = unsafe {
                 core::arch::asm!("csrrci {}, mstatus, 0b1000", out(reg) mstatus);
-                core::mem::transmute::<usize, riscv::register::mstatus::Mstatus>(mstatus).mie();
-            }
+                core::mem::transmute::<usize, riscv::register::mstatus::Mstatus>(mstatus).mie()
+            };
             spin();
             LOCK_OWNER.store(owner_id, Release);
-            mstatus as _
+            mie as _
         }
     }
 
