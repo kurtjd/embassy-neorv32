@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Change DMA transfer size comments from 23 bits to 24 bits
 - Fix dual-hart CS acquire to return mie, not mstatus
 - Have TWI driver shift address before ORing R/W bit
 

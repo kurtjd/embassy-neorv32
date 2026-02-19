@@ -8,7 +8,7 @@ use core::task::{Context, Poll};
 use embassy_hal_internal::{Peri, PeripheralType};
 use embassy_sync::waitqueue::AtomicWaker;
 
-const U23_MAX: u32 = 0xff_ffff;
+const U24_MAX: u32 = 0xff_ffff;
 
 /// DMA interrupt handler binding.
 pub struct InterruptHandler<T: Instance> {
@@ -75,8 +75,8 @@ impl TransferConfig {
         src_cfg: DataConfig,
         dst_cfg: DataConfig,
     ) -> Self {
-        // Hardware only supports 23 bits for num elements
-        assert!(num_elems > 0 && num_elems < U23_MAX);
+        // Hardware only supports 24 bits for num elements
+        assert!(num_elems > 0 && num_elems <= U24_MAX);
         Self {
             num_elems,
             swap_byte_order,
@@ -91,7 +91,7 @@ impl From<TransferConfig> for u32 {
         (u32::from(config.dst_cfg) << 30)
             | (u32::from(config.src_cfg) << 28)
             | ((config.swap_byte_order as u32) << 27)
-            | (config.num_elems & U23_MAX)
+            | (config.num_elems & U24_MAX)
     }
 }
 
@@ -186,7 +186,7 @@ impl<'d> Dma<'d> {
     ///
     /// # Panics
     ///
-    /// Panics if the `dst` buffer length can not be represented in 23 bits.
+    /// Panics if the `dst` buffer length can not be represented in 24 bits.
     pub fn read<'t, W: Word>(
         &'t mut self,
         src: &W,
@@ -208,7 +208,7 @@ impl<'d> Dma<'d> {
     ///
     /// # Panics
     ///
-    /// Panics if the `src` buffer length can not be represented in 23 bits.
+    /// Panics if the `src` buffer length can not be represented in 24 bits.
     pub fn write<'t, W: Word>(
         &'t mut self,
         src: &[W],
@@ -231,7 +231,7 @@ impl<'d> Dma<'d> {
     /// # Panics
     ///
     /// Panics if the `src` buffer length does not match the `dst` buffer length,
-    /// or if the buffer length can not be represented in 23 bits.
+    /// or if the buffer length can not be represented in 24 bits.
     pub fn copy<'t, W: Word>(
         &'t mut self,
         src: &[W],
