@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.2.1] - 2026-02-18
+
 ### Changed
 
 - Fix UART `write_byte` so it does a write, not modify of data reg
@@ -14,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Change DMA transfer size comments from 23 bits to 24 bits
 - Fix dual-hart CS acquire to return mie, not mstatus
 - Have TWI driver shift address before ORing R/W bit
+- Fix UART TX active
+- Fix GPIO `is_low`
 
 ## [v0.2.0] - 2026-02-15
 
