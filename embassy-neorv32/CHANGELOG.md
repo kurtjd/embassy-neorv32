@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Fix UART `write_byte` so it does a write, not modify of data reg
 - Check the duty cycle for PWM in embedded-hal implementation
 - Change DMA transfer size comments from 23 bits to 24 bits
 - Fix dual-hart CS acquire to return mie, not mstatus

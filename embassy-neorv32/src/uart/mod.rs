@@ -601,7 +601,7 @@ impl<'d, M: IoMode> UartTx<'d, M> {
         self.info
             .reg
             .data()
-            .modify(|_, w| unsafe { w.uart_data_rtx().bits(byte) });
+            .write(|w| unsafe { w.uart_data_rtx().bits(byte) });
     }
 
     fn enable_irq_tx_empty(&mut self) {
