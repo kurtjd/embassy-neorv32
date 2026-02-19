@@ -156,7 +156,7 @@ impl<'d, M: IoMode> Twi<'d, M> {
     }
 
     fn write_addr(&mut self, addr: u8, rw: Rw) -> Result<(), Error> {
-        self.write_byte(addr | (u8::from(rw)))
+        self.write_byte((addr << 1) | (u8::from(rw)))
             .map_err(|_| Error::NackAddr)
     }
 
