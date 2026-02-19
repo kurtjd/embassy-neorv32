@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Fix dual-hart CS acquire to return mie, not mstatus
 - Have TWI driver shift address before ORing R/W bit
 
 ## [v0.2.0] - 2026-02-15
