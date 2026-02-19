@@ -411,8 +411,12 @@ impl<'d> embedded_hal_1::pwm::SetDutyCycle for PwmChan<'d> {
     }
 
     fn set_duty_cycle(&mut self, duty: u16) -> Result<(), Self::Error> {
-        let percent = Percent::new(duty as u8)?;
-        self.set_duty_cycle(percent);
-        Ok(())
+        if duty > self.max_duty_cycle() {
+            Err(Error::InvalidDuty)
+        } else {
+            let percent = Percent::new(duty as u8)?;
+            self.set_duty_cycle(percent);
+            Ok(())
+        }
     }
 }
