@@ -196,8 +196,8 @@ mod ihc {
 
 mod cs {
     use super::*;
-    use core::sync::atomic::AtomicU8;
-    use core::sync::atomic::Ordering::{Acquire, Release};
+    use portable_atomic::AtomicU8;
+    use portable_atomic::Ordering::{Acquire, Release};
 
     // Need to track this since critical sections can be nested
     const LOCK_UNOWNED: u8 = 0;
@@ -244,8 +244,8 @@ mod cs {
     #[cfg(target_has_atomic = "ptr")]
     mod cs_impl {
         use super::*;
-        use core::sync::atomic::AtomicBool;
-        use core::sync::atomic::Ordering::{Acquire, Relaxed, Release};
+        use portable_atomic::AtomicBool;
+        use portable_atomic::Ordering::{Acquire, Relaxed, Release};
 
         static LOCK: AtomicBool = AtomicBool::new(false);
 
@@ -279,8 +279,8 @@ mod cs {
     #[cfg(not(target_has_atomic = "ptr"))]
     mod cs_impl {
         use super::*;
-        use core::sync::atomic::Ordering::SeqCst;
-        use core::sync::atomic::{AtomicBool, AtomicUsize};
+        use portable_atomic::Ordering::SeqCst;
+        use portable_atomic::{AtomicBool, AtomicUsize};
 
         static TURN: AtomicUsize = AtomicUsize::new(0);
         static FLAG: [AtomicBool; NHARTS] = [const { AtomicBool::new(false) }; NHARTS];
@@ -312,8 +312,8 @@ mod cs {
 pub mod executor {
     use super::*;
     use core::marker::PhantomData;
-    use core::sync::atomic::AtomicBool;
-    use core::sync::atomic::Ordering::{Acquire, Relaxed, Release};
+    use portable_atomic::AtomicBool;
+    use portable_atomic::Ordering::{Acquire, Relaxed, Release};
     use embassy_executor::{Spawner, raw};
 
     static SEV_FLAG: [AtomicBool; NHARTS] = [const { AtomicBool::new(false) }; NHARTS];

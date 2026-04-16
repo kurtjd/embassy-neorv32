@@ -3,7 +3,7 @@ use crate::interrupt::typelevel::{Binding, Handler, Interrupt};
 use crate::peripherals::DMA;
 use core::marker::PhantomData;
 use core::pin::Pin;
-use core::sync::atomic::{AtomicBool, Ordering, fence};
+use portable_atomic::{AtomicBool, Ordering, fence};
 use core::task::{Context, Poll};
 use embassy_hal_internal::{Peri, PeripheralType};
 use embassy_sync::waitqueue::AtomicWaker;
